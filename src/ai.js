@@ -71,6 +71,42 @@ function voronoi(grid, myX, myY, oppHeads) {
   return { mine, theirs, reachable: connected };
 }
 
+// #4 — lookahead 2-ply (minimax/maximin). Só usado pelo ARES e só perto do combate.
+const LOOKAHEAD_RANGE = 30;   // distância (Manhattan) do oponente p/ ligar a busca; longe disso o 1-ply basta
+const HUGE_ADV = 1e6;         // ramo onde o oponente fica sem saída = vitória do bot
+const EMPTY_HEADS = [];       // evita alocar quando há só 1 oponente (caso do ARES)
+
+// Vantagem de PIOR CASO do bot ao jogar (mx,my): assume que o oponente responde com
+// o movimento que MAIS reduz a vantagem do bot (mine - violence*theirs). Marca o novo
+// cabeçote do bot e a resposta como ocupados (paredes) e roda o Voronoi a 2 ply. Se o
+// oponente não tiver saída a partir daqui, o bot vence o ramo. Restaura a grade no fim.
+function worstCaseAdvantage(grid, botId, mx, my, opp, otherHeads, violence) {
+  const ka = my * COLS + mx;
+  const savedA = grid[ka];
+  grid[ka] = botId;                                  // ARES ocupa o novo cabeçote (bloqueia o opp e o flood)
+  const oppRev = OPPOSITE[opp.dir];
+  let worst = Infinity, anyMove = false;
+  for (let i = 0; i < ALL_DIRS.length; i++) {
+    const dir = ALL_DIRS[i];
+    if (dir === oppRev) continue;
+    const v = DIRS[dir];
+    const ox = opp.x + v.x, oy = opp.y + v.y;
+    if (!isFree(grid, ox, oy)) continue;             // resposta que mata o opp não é resposta dele
+    anyMove = true;
+    const ko = oy * COLS + ox;
+    const savedO = grid[ko];
+    grid[ko] = opp.id;
+    const oHead = { x: ox, y: oy };
+    const heads = otherHeads.length ? otherHeads.concat(oHead) : [oHead];
+    const r = voronoi(grid, mx, my, heads);
+    grid[ko] = savedO;
+    const adv = r.mine - violence * r.theirs;
+    if (adv < worst) worst = adv;
+  }
+  grid[ka] = savedA;
+  return anyMove ? worst : HUGE_ADV;                 // opp sem saída → ramo vencedor pro bot
+}
+
 // Decide a próxima direção do `bot`. Retorna a string da direção, ou null se não
 // houver saída (aí o chamador mantém a direção atual).
 export function chooseDirection(bot, players, grid, violence = 0.2) {
@@ -78,7 +114,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
   // Semeia a célula À FRENTE dele (se livre) em vez da atual → a IA "lê" o adversário
   // e mira onde ele VAI estar (melhor interceptação/corte).
   const oppHeads = [];
-  let oppX = 0, oppY = 0, oppDist = Infinity, hasOpp = false;
+  let oppX = 0, oppY = 0, oppDist = Infinity, hasOpp = false, nearestOpp = null, nearestHeadIdx = -1;
   for (let i = 0; i < players.length; i++) {
     const p = players[i];
     if (p === bot || !p.alive) continue;
@@ -87,7 +123,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     if (!isFree(grid, hx, hy)) { hx = p.x; hy = p.y; }         // frente bloqueada → usa a posição atual
     oppHeads.push({ x: hx, y: hy });
     const md = Math.abs(hx - bot.x) + Math.abs(hy - bot.y);
-    if (md < oppDist) { oppDist = md; oppX = hx; oppY = hy; hasOpp = true; }
+    if (md < oppDist) { oppDist = md; oppX = hx; oppY = hy; hasOpp = true; nearestOpp = p; nearestHeadIdx = oppHeads.length - 1; }
   }
 
   const reverse = OPPOSITE[bot.dir];
@@ -105,7 +141,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     if (!isFree(grid, nx, ny + 1)) wallHug++;
     if (!isFree(grid, nx, ny - 1)) wallHug++;
     const dNext = hasOpp ? Math.abs(nx - oppX) + Math.abs(ny - oppY) : 0;
-    cand.push({ dir, isTurn: dir !== bot.dir, mine, theirs, reachable, wallHug, dNext });
+    cand.push({ dir, isTurn: dir !== bot.dir, mine, theirs, reachable, wallHug, dNext, nx, ny });
   }
   if (!cand.length) return null;
 
@@ -144,6 +180,25 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     for (const c of cand) if (c.mine >= MIN_SAFE_SPACE && c.reachable && c.theirs <= KILL_THRESHOLD)
       if (!killer || c.theirs < killer.theirs) killer = c;
     if (killer) return killer.dir;
+
+    // #4 ARES perto do combate: minimax 2-ply (maximin). Escolhe o movimento de
+    // MELHOR pior-caso entre os candidatos seguros — arma cercos e não anda pra
+    // dentro de armadilha. Substitui o corte aleatório quando ligado (jogo planejado).
+    if (aggro > 0 && oppDist <= LOOKAHEAD_RANGE && nearestOpp) {
+      let otherHeads = EMPTY_HEADS;
+      if (oppHeads.length > 1) {                                    // multi-oponente: os demais entram como heads estáticos
+        otherHeads = [];
+        for (let i = 0; i < oppHeads.length; i++) if (i !== nearestHeadIdx) otherHeads.push(oppHeads[i]);
+      }
+      let pick = null, pickVal = -Infinity;
+      for (const c of cand) {
+        if (c.mine < MIN_SAFE_SPACE || !c.reachable) continue;      // só candidatos seguros e conectados
+        const wc = worstCaseAdvantage(grid, bot.id, c.nx, c.ny, nearestOpp, otherHeads, violence);
+        const val = wc - (c.isTurn ? effTurn : 0);                  // mantém o "anda reto" do ARES (desempate)
+        if (val > pickVal) { pickVal = val; pick = c; }
+      }
+      if (pick) return pick.dir;
+    }
     // corte situacional: só dispara quando existe um movimento que sufoca o oponente BEM
     // mais que o equilibrado — com uma pitada de aleatório (variedade/surpresa, escala c/ violência).
     const best = cand[0];
