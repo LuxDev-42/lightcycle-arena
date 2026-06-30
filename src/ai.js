@@ -34,6 +34,10 @@ const KILL_THRESHOLD = 30;  // se um movimento deixa o oponente com <= isto de e
 const CUT_GAIN_MIN = 60;    // corte situacional só dispara se sufocar o oponente em pelo menos isto a mais que o melhor
 const WALL_HUG_BONUS = 4;   // (isolado) bônus por encostar em parede/rastro — preenche o espaço sem fragmentar
 const FILL_TURN_FACTOR = 0.35; // (isolado) fração do TURN_PENALTY — curva mais livre p/ serpentear e preencher
+// Ajuste só de VIOLÊNCIA ALTA (ARES): "aggro" = 0 pra violence<=0.6 (normal intocado), 1 em violence=1.0.
+// Serve pra tirar o excesso de curvas do ARES sem mexer no modo normal.
+const AGGRO_TURN_EXTRA = 0.4;  // ARES: penalidade de curva extra (effTurn = TURN_PENALTY*(1+isto*aggro))
+const CUT_TURN_BIAS = 30;      // ARES: vies que faz o corte preferir reto (×aggro) — curva no corte só se valer mais
 
 // BFS multi-fonte a partir da cabeça do bot (myX,myY) E das cabeças oponentes ao
 // mesmo tempo. Cada célula livre fica com quem chega primeiro; empate de distância
@@ -109,6 +113,9 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
   // SOBREVIVÊNCIA: esquece o ataque, maximiza o espaço próprio e gruda nas paredes
   // pra preencher a região sem fragmentá-la (vence mais finais).
   const isolated = !hasOpp || !cand.some(c => c.reachable);
+  // só o ARES (violence alto) curva menos: aggro = 0 no normal (<=0.6) e 1 no ARES (1.0)
+  const aggro = Math.max(0, (violence - 0.6) / 0.4);
+  const effTurn = TURN_PENALTY * (1 + AGGRO_TURN_EXTRA * aggro);
 
   for (const c of cand) {
     let score;
@@ -117,7 +124,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
       if (c.isTurn) score -= TURN_PENALTY * FILL_TURN_FACTOR;  // curva mais livre pra serpentear
     } else {
       score = c.mine - violence * c.theirs;                    // território próprio − (agressão × território deles)
-      if (c.isTurn) score -= TURN_PENALTY;
+      if (c.isTurn) score -= effTurn;                          // ARES paga mais caro por curvar → mantém a velocidade
       if (c.dNext < oppDist) score += violence * CHASE_BONUS;  // caça: aproximar-se compensa a curva
       if (!c.reachable) score -= violence * SEAL_PENALTY;      // pathfinding: não se isole do oponente
     }
@@ -140,9 +147,11 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     // corte situacional: só dispara quando existe um movimento que sufoca o oponente BEM
     // mais que o equilibrado — com uma pitada de aleatório (variedade/surpresa, escala c/ violência).
     const best = cand[0];
-    let cut = null;
-    for (const c of cand) if (c.mine >= MIN_SAFE_SPACE && c.reachable)
-      if (!cut || c.theirs < cut.theirs) cut = c;
+    let cut = null, cutCost = Infinity;
+    for (const c of cand) if (c.mine >= MIN_SAFE_SPACE && c.reachable) {
+      const cost = c.theirs + (c.isTurn ? CUT_TURN_BIAS * aggro : 0);   // ARES prefere cortes RETOS (curva só se valer muito mais)
+      if (cost < cutCost) { cutCost = cost; cut = c; }
+    }
     const cutChance = clamp(0.08 + violence * 0.35, 0, 0.55);
     if (cut && cut !== best && (cut.theirs <= best.theirs - CUT_GAIN_MIN || Math.random() < cutChance)) return cut.dir;
   }
