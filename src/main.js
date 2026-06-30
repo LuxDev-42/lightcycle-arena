@@ -32,6 +32,8 @@ const swatch1El = document.getElementById("sw1");
 const swatch2El = document.getElementById("sw2");
 const cdot1El = document.getElementById("cdot1");   // bolinhas do ícone do botão "Cores"
 const cdot2El = document.getElementById("cdot2");
+const btnCpuEl = document.getElementById("btn-cpu");   // herda a cor do P1 (ver refreshColorUI)
+const btn2pEl = document.getElementById("btn-2p");     // herda a cor do P2
 const bgm = document.getElementById("bgm");
 const musicVolEl = document.getElementById("music-vol");
 const sfxVolEl = document.getElementById("sfx-vol");
@@ -133,6 +135,10 @@ function refreshColorUI() {
   hue2El.style.setProperty("--thumb", playerColors[1]);
   for (const el of title1Els) { el.style.color = playerColors[0]; el.style.textShadow = `0 0 12px ${playerColors[0]}, 0 0 30px ${playerColors[0]}`; }
   for (const el of title2Els) { el.style.color = playerColors[1]; el.style.textShadow = `0 0 12px ${playerColors[1]}, 0 0 30px ${playerColors[1]}`; }
+  // botões 1/2 Jogadores herdam as cores do P1/P2: sobrescreve a var de cor do botão
+  // (cor, borda, hover e glow passam a seguir o tom escolhido — igual ao título).
+  if (btnCpuEl) btnCpuEl.style.setProperty("--cyan", playerColors[0]);
+  if (btn2pEl) btn2pEl.style.setProperty("--orange", playerColors[1]);
 }
 
 // Cor de cada moto: P1/P2 vêm dos sliders; CPUs extras ganham matizes espalhadas.
@@ -174,6 +180,7 @@ let prevAlive = [];
 let nearMissCd = 0;        // cooldown da vinheta de quase-acidente (ms)
 let stepTickCd = 0;        // cooldown do tique de passo (ms)
 let lastHeadKey = [];      // ultima celula da cabeca por jogador humano (detecta passo)
+let aresEscAllowed = false; // ARES: Esc de saida so libera apos a 1a morte/derrota
 let aresTerminalLines = [];
 let aresTerminalActive = false;
 let aresTerminalIndex = 0;
@@ -385,6 +392,7 @@ function frame(timestamp) {
           audio.explosion(renderer.screenPan(state.players[i]));
           renderer.addShake(SHAKE_DEATH);              // tremor de tela na morte
           renderer.addFlash(0.22, "#ffffff");
+          if (state.ares) aresEscAllowed = true;       // 1ª morte no ARES → libera o Esc de saída
         }
         prevAlive[i] = state.players[i].alive;
       }
@@ -492,6 +500,7 @@ function showOnly(target) {
 async function startMatch(mode) {
   const chance = mode === "2p" ? ARES_CHANCE / 10 : ARES_CHANCE;
   state.ares = Math.random() < chance;     // sorteia o modo ARES
+  aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera so apos a 1a morte)
   configureRoster(mode);                   // ARES força 1 CPU
   showOnly(null);
   resetRound();
@@ -607,7 +616,8 @@ window.addEventListener("keydown", (event) => {
     } else if (state.phase === "fade") {
       // já fazendo o fade — ignora
     } else if (state.ares) {
-      audio.uiBack(); aresEnd();   // ARES: sai com o mesmo fade pra branco
+      if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
+      else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
     } else {
       audio.uiBack(); goMenu();
     }

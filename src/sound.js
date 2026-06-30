@@ -266,6 +266,13 @@ export class AudioEngine {
     this._tone("sawtooth", 600, t + 0.02, 0.06, 0.05, pan);
   }
 
+  error() {   // "negado/erro" — buzz grave descendente (ex.: tentar sair do ARES cedo demais)
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this._tone("sawtooth", 150, t, 0.10, 0.16);
+    this._tone("sawtooth", 100, t + 0.08, 0.14, 0.16);
+  }
+
   tick(go) {  // bip da contagem regressiva (go = "vai!", mais agudo e longo)
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
