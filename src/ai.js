@@ -8,8 +8,7 @@
 // "corte-surpresa" (escala com a violência) faz o bot lançar de vez em quando o
 // golpe que mais fecha o espaço do oponente — é o susto do ARES de cortar do nada.
 //
-// A IA antiga (gulosa, flood-fill + viés de distância) está em ai-classic.js;
-// pra voltar a ela, troque o import no logic.js para "./ai-classic.js".
+// (A IA antiga gulosa/flood-fill foi removida; está no histórico do git se precisar.)
 import { DIRS, OPPOSITE, COLS, ROWS, isFree, clamp } from "./config.js";
 
 const N = COLS * ROWS;

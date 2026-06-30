@@ -1,6 +1,7 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, BASE_TICK, MIN_TICK, CAM_PAN_TAU, CAM_ZOOM_TAU, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_BASE, CAM_PAN_GAIN, CAM_PAN_REF, CAM_ZOOM_BASE, CAM_ZOOM_GAIN, CAM_ZOOM_REF, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
+import { drawDebug } from "./debug-overlay.js";
 
 // Telas de toque (pixels densos + GPU mais fraca) entram no modo econômico: menos pixels e sem shadowBlur caro.
 const COARSE = (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches)
@@ -59,14 +60,6 @@ export class Renderer {
   }
 
   // ---- Câmera ----
-  headWorld(player) {
-    const progress = player.alive ? player.progress : 1;
-    return {
-      x: (player.prevX + (player.x - player.prevX) * progress + 0.5) * CELL,
-      y: (player.prevY + (player.y - player.prevY) * progress + 0.5) * CELL,
-    };
-  }
-
   // Pan estéreo (-1..1) pela posição horizontal da moto NA TELA.
   screenPan(player) {
     const progress = player.alive ? player.progress : 1;   // só precisamos do X (sem alocar objeto)
@@ -121,13 +114,19 @@ export class Renderer {
       this.camX = target.x; this.camY = target.y; this.camZoom = target.zoom; this.snap = false;
       return;
     }
-    // pan responsivo (acompanha as motos) + zoom mais suave; suavizacao exponencial
-    // SEM teto de velocidade (move proporcional a distancia: longe = rapido, perto = lento)
-    const panSmooth = 1 - Math.exp(-dt / CAM_PAN_TAU);
-    const zoomSmooth = 1 - Math.exp(-dt / CAM_ZOOM_TAU);
-    this.camX += (target.x - this.camX) * panSmooth;
-    this.camY += (target.y - this.camY) * panSmooth;
-    this.camZoom += (target.zoom - this.camZoom) * zoomSmooth;
+    // Centro: velocidade ∝ distância (longe = rápido, perto = suave). Frame-rate independente.
+    const dx = target.x - this.camX, dy = target.y - this.camY;
+    const distC = Math.hypot(dx, dy);
+    const rateC = CAM_PAN_BASE + CAM_PAN_GAIN * (distC / (distC + CAM_PAN_REF));
+    const aC = 1 - Math.exp(-rateC * dt / 1000);
+    this.camX += dx * aC;
+    this.camY += dy * aC;
+    // Zoom: mesma lei, na escala dele — responsivo quando muda muito (afastar↔aproximar), suave no ajuste fino.
+    const dz = target.zoom - this.camZoom;
+    const distZ = Math.abs(dz);
+    const rateZ = CAM_ZOOM_BASE + CAM_ZOOM_GAIN * (distZ / (distZ + CAM_ZOOM_REF));
+    const aZ = 1 - Math.exp(-rateZ * dt / 1000);
+    this.camZoom += dz * aZ;
   }
 
   // ---- Desenho ----
@@ -391,7 +390,7 @@ export class Renderer {
     this.drawObstacles(state);
     if (state.players) for (const player of state.players) this.drawTrail(player);
     this.drawParticles(state.particles);
-    if (this.debug) this.drawDebug(state);
+    if (this.debug) drawDebug(this, state);
 
     if (this.flashAlpha > 0) {                         // vinheta de flash (quase-acidente/morte)
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -431,120 +430,4 @@ export class Renderer {
   // ---- Juice: tremor de tela + vinheta de flash (disparados pelo main.js) ----
   addShake(px) { if (px > this.shake) this.shake = px; }
   addFlash(alpha, color = "#ffffff") { if (alpha > this.flashAlpha) { this.flashAlpha = alpha; this.flashColor = color; } }
-
-  // ===== Modo debug (Ctrl+D+B): visualiza o "pathfinding" da IA =====
-  // Território (Voronoi multi-fonte): cada célula livre fica com a cor de quem
-  // chega primeiro a partir das cabeças; empate = cinza. É a base da decisão da IA.
-  _debugTerritory(state) {
-    const n = COLS * ROWS;
-    if (!this._dbgOwner || this._dbgOwner.length !== n) {
-      this._dbgOwner = new Int16Array(n); this._dbgDist = new Int32Array(n); this._dbgQ = new Int32Array(n);
-    }
-    const owner = this._dbgOwner, dist = this._dbgDist, q = this._dbgQ, grid = state.grid, players = state.players;
-    owner.fill(-2);                                  // -2 não visitada · -1 contestada · >=0 índice do jogador
-    const connected = players.map(() => false);      // a região deste jogador encosta na de outro?
-    let tail = 0;
-    for (let i = 0; i < players.length; i++) {
-      const p = players[i]; if (!p.alive) continue;
-      const k = p.y * COLS + p.x; if (owner[k] === -2) { owner[k] = i; dist[k] = 0; q[tail++] = k; }
-    }
-    for (let head = 0; head < tail; head++) {
-      const k = q[head], o = owner[k], c = k % COLS, r = (k - c) / COLS, nd = dist[k] + 1;
-      const relax = (nk) => {
-        if (grid[nk] !== 0) return;
-        if (owner[nk] === -2) { owner[nk] = o; dist[nk] = nd; q[tail++] = nk; }
-        else if (owner[nk] !== o) {
-          if (o >= 0 && owner[nk] >= 0) { connected[o] = true; connected[owner[nk]] = true; }
-          if (dist[nk] === nd && owner[nk] !== -1) owner[nk] = -1;
-        }
-      };
-      if (c + 1 < COLS) relax(k + 1); if (c > 0) relax(k - 1);
-      if (r + 1 < ROWS) relax(k + COLS); if (r > 0) relax(k - COLS);
-    }
-    return { owner, connected };
-  }
-
-  // Caminho mais curto (BFS) da cabeça do bot até encostar no oponente — o
-  // "traçado": se existe, o bot ainda alcança o alvo; se não, está isolado.
-  _debugPath(grid, sx, sy, tx, ty) {
-    const n = COLS * ROWS;
-    if (!this._pPrev || this._pPrev.length !== n) { this._pPrev = new Int32Array(n); this._pSeen = new Int32Array(n); this._pQ = new Int32Array(n); this._pGen = 0; }
-    const prev = this._pPrev, seen = this._pSeen, q = this._pQ, gen = ++this._pGen;
-    const sk = sy * COLS + sx; seen[sk] = gen; prev[sk] = -1; let tail = 0; q[tail++] = sk;
-    let found = -1;
-    for (let head = 0; head < tail; head++) {
-      const k = q[head], c = k % COLS, r = (k - c) / COLS;
-      if (Math.abs(c - tx) + Math.abs(r - ty) === 1) { found = k; break; }   // encostou no alvo
-      const tryN = (nk) => { if (grid[nk] !== 0 || seen[nk] === gen) return; seen[nk] = gen; prev[nk] = k; q[tail++] = nk; };
-      if (c + 1 < COLS) tryN(k + 1); if (c > 0) tryN(k - 1);
-      if (r + 1 < ROWS) tryN(k + COLS); if (r > 0) tryN(k - COLS);
-    }
-    if (found < 0) return null;
-    const path = []; for (let cur = found; cur !== -1; cur = prev[cur]) path.push({ x: cur % COLS, y: (cur - cur % COLS) / COLS });
-    return path;
-  }
-
-  drawDebug(state) {
-    const ctx = this.ctx;
-    if (!state.players) return;
-    const { owner, connected } = this._debugTerritory(state);
-    const halfW = (this.viewW / 2) / this.camZoom, halfH = (this.viewH / 2) / this.camZoom;
-    const c0 = Math.max(0, Math.floor((this.camX - halfW) / CELL)), c1 = Math.min(COLS, Math.ceil((this.camX + halfW) / CELL));
-    const r0 = Math.max(0, Math.floor((this.camY - halfH) / CELL)), r1 = Math.min(ROWS, Math.ceil((this.camY + halfH) / CELL));
-
-    // 1) tinta do território (só a área visível)
-    ctx.save();
-    for (let r = r0; r < r1; r++) {
-      for (let c = c0; c < c1; c++) {
-        const o = owner[r * COLS + c];
-        if (o === -2) continue;
-        if (o === -1) { ctx.globalAlpha = 1; ctx.fillStyle = "rgba(150,170,190,0.10)"; }
-        else { ctx.globalAlpha = 0.16; ctx.fillStyle = state.players[o].color; }
-        ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-      }
-    }
-    ctx.restore();
-
-    // 2) por jogador: anel de alcance, traçado até o oponente, seta de decisão
-    for (let i = 0; i < state.players.length; i++) {
-      const p = state.players[i]; if (!p.alive) continue;
-      const hx = (p.x + 0.5) * CELL, hy = (p.y + 0.5) * CELL;
-      ctx.beginPath(); ctx.arc(hx, hy, CELL * 0.95, 0, Math.PI * 2);
-      ctx.lineWidth = 2 / this.camZoom; ctx.strokeStyle = connected[i] ? "#46e07a" : "#ff3b3b"; ctx.stroke();
-      if (!p.isAI) continue;
-      let tgt = null, bd = Infinity;
-      for (const o of state.players) { if (o === p || !o.alive) continue; const d = Math.abs(o.x - p.x) + Math.abs(o.y - p.y); if (d < bd) { bd = d; tgt = o; } }
-      if (tgt) {
-        const path = this._debugPath(state.grid, p.x, p.y, tgt.x, tgt.y);
-        if (path && path.length) {
-          ctx.beginPath(); ctx.moveTo((path[0].x + 0.5) * CELL, (path[0].y + 0.5) * CELL);
-          for (const cell of path) ctx.lineTo((cell.x + 0.5) * CELL, (cell.y + 0.5) * CELL);
-          ctx.lineWidth = CELL * 0.28; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.stroke();
-        }
-      }
-      const d = DIRS[p.nextDir];
-      if (d) {
-        const ex = hx + d.x * CELL * 2.4, ey = hy + d.y * CELL * 2.4;
-        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ex, ey);
-        ctx.lineWidth = 3 / this.camZoom; ctx.strokeStyle = "#ffe14d"; ctx.stroke();
-        ctx.beginPath(); ctx.arc(ex, ey, CELL * 0.35, 0, Math.PI * 2); ctx.fillStyle = "#ffe14d"; ctx.fill();
-      }
-    }
-
-    // 3) HUD (espaço de tela): velocidade, território e alcance por moto
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    const counts = state.players.map(() => 0);
-    for (let k = 0; k < owner.length; k++) { const o = owner[k]; if (o >= 0) counts[o]++; }
-    ctx.font = "12px monospace"; ctx.textBaseline = "top";
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(8, 6, 340, 26 + state.players.length * 16);
-    ctx.fillStyle = "#bff4ff"; ctx.fillText("DEBUG  territorio (cor) · tracado (branco) · decisao (amarelo)", 14, 12);
-    let y = 30;
-    for (let i = 0; i < state.players.length; i++) {
-      const p = state.players[i];
-      const spd = Math.round(clamp((BASE_TICK - p.tickMs) / (BASE_TICK - MIN_TICK), 0, 1) * 100);
-      ctx.fillStyle = p.alive ? p.color : "#666";
-      ctx.fillText(`${p.label || ("P" + p.id)}  vel ${spd}%  terr ${counts[i]}  ${connected[i] ? "ligado" : "ISOLADO"}${p.alive ? "" : "  morto"}`, 14, y);
-      y += 16;
-    }
-  }
 }

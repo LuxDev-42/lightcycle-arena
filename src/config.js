@@ -28,8 +28,15 @@ export const ARES_SPEEDUP = 0.95;    // aceleração do programa ARES (bem mais 
 export const ARES_SPEED_MULT = 1.1;  // topo de velocidade do ARES = 10% acima do normal (minTick ÷ 1.1)
 
 // ---- Camera ----
-export const CAM_PAN_TAU = 200;      // const. de tempo (ms) do PAN — menor = acompanha mais rapido (sem teto de velocidade)
-export const CAM_ZOOM_TAU = 650;     // const. de tempo (ms) do ZOOM — maior = entra/sai mais suave
+// O "atual" persegue o "alvo" (centro entre as motos + zoom) com VELOCIDADE
+// PROPORCIONAL À DISTÂNCIA: longe do alvo = rápido, perto = suave. Some o "snap"
+// do tau fixo na virada afastar↔aproximar. taxa(1/s) = BASE + GAIN·d/(d+REF).
+export const CAM_PAN_BASE = 3;        // perseguição do CENTRO perto do alvo (1/s) — maior = mais grudado
+export const CAM_PAN_GAIN = 8;        // ganho de velocidade do centro conforme a distância cresce
+export const CAM_PAN_REF = 50 * CELL; // distância (px) onde o ganho do centro chega à metade
+export const CAM_ZOOM_BASE = 2.5;     // perseguição do ZOOM perto do alvo (1/s)
+export const CAM_ZOOM_GAIN = 7;       // ganho de velocidade do zoom conforme a distância cresce (afastar↔aproximar)
+export const CAM_ZOOM_REF = 0.5;      // distância (em zoom) onde o ganho do zoom chega à metade
 export const CAM_PADDING_CELLS = 26; // folga (em celulas) ao redor das motos — maior = mais margem p/ reagir a paredes
 
 // ---- Juice (feedback visual/sonoro) ----
