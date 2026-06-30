@@ -1,8 +1,9 @@
 // Entrada do jogo: cria o estado, conecta DOM/áudio/cores/menus/input e roda o
 // game loop, orquestrando os módulos de lógica, IA (via lógica) e gráficos.
 import {
-  COLS, ROWS, OPPOSITE, createGrid, idx, clamp,
+  COLS, ROWS, OPPOSITE, DIRS, createGrid, idx, isFree, clamp,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_HOLD_MS, ARES_FADE_MS, ARES_HUE,
+  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS,
 } from "./config.js";
 import { makePlayer, advance, updateParticles, spawnLayout } from "./logic.js";
 import { Renderer } from "./graphics.js";
@@ -170,6 +171,9 @@ let debug = false;                 // modo debug (Ctrl+D+B): overlay do pathfind
 const heldKeys = new Set();        // teclas seguradas agora (p/ detectar o chord)
 let lastTime = 0;
 let prevAlive = [];
+let nearMissCd = 0;        // cooldown da vinheta de quase-acidente (ms)
+let stepTickCd = 0;        // cooldown do tique de passo (ms)
+let lastHeadKey = [];      // ultima celula da cabeca por jogador humano (detecta passo)
 let aresTerminalLines = [];
 let aresTerminalActive = false;
 let aresTerminalIndex = 0;
@@ -377,8 +381,30 @@ function frame(timestamp) {
     } else if (state.phase === "playing" || state.phase === "dying") {
       if (advance(state, dt)) renderScoreboard();   // round terminou → placar
       for (let i = 0; i < state.players.length; i++) {
-        if (prevAlive[i] && !state.players[i].alive) audio.explosion(renderer.screenPan(state.players[i]));
+        if (prevAlive[i] && !state.players[i].alive) {
+          audio.explosion(renderer.screenPan(state.players[i]));
+          renderer.addShake(SHAKE_DEATH);              // tremor de tela na morte
+          renderer.addFlash(0.22, "#ffffff");
+        }
         prevAlive[i] = state.players[i].alive;
+      }
+      // juice do jogador HUMANO: tique de passo (feel de velocidade) + vinheta de quase-acidente
+      nearMissCd -= dt; stepTickCd -= dt;
+      for (let i = 0; i < state.players.length; i++) {
+        const p = state.players[i];
+        if (p.isAI || !p.alive) continue;
+        const hk = p.y * COLS + p.x;
+        if (hk === lastHeadKey[i]) continue;           // só dispara quando anda uma célula
+        lastHeadKey[i] = hk;
+        if (stepTickCd <= 0) { audio.moveTick(renderer.screenPan(p), p.tickMs); stepTickCd = STEPTICK_MIN_MS; }
+        if (nearMissCd <= 0) {                          // parede/rastro logo ao lado (perpendicular ao rumo)?
+          const d = DIRS[p.dir];
+          const graze = !isFree(state.grid, p.x - d.y, p.y + d.x) || !isFree(state.grid, p.x + d.y, p.y - d.x);
+          if (graze) {
+            renderer.addFlash(0.3, "#ff2a2a"); renderer.addShake(4); audio.nearMiss(renderer.screenPan(p));
+            nearMissCd = NEARMISS_COOLDOWN_MS;
+          }
+        }
       }
       if (state.phase === "dying") {
         state.dyingTimer -= dt;

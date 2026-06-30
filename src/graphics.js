@@ -1,6 +1,6 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, BASE_TICK, MIN_TICK, CAM_PAN_TAU, CAM_ZOOM_TAU, CAM_PADDING_CELLS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, BASE_TICK, MIN_TICK, CAM_PAN_TAU, CAM_ZOOM_TAU, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
 
 const MAX_DPR = 2;   // teto da resolução de render (≤2x = sem mudança visual; baixe p/ mais FPS em telas hi-DPI)
 
@@ -17,6 +17,9 @@ export class Renderer {
     this.camZoom = 1;
     this.snap = true;
     this.debug = false;
+    this.shake = 0;            // intensidade atual do tremor de tela (px)
+    this.flashAlpha = 0;       // alpha atual da vinheta de flash
+    this.flashColor = "#ffffff";
     this.resize();
   }
 
@@ -87,6 +90,9 @@ export class Renderer {
   }
 
   updateCamera(state, dt) {
+    // decai os efeitos de juice (tremor/flash) — sempre, mesmo sem jogadores
+    this.shake *= Math.exp(-dt / SHAKE_DECAY_MS); if (this.shake < 0.3) this.shake = 0;
+    this.flashAlpha *= Math.exp(-dt / FLASH_DECAY_MS); if (this.flashAlpha < 0.01) this.flashAlpha = 0;
     if (!state.players) return;
     const target = this.cameraTarget(state);
     if (this.snap) {
@@ -269,8 +275,10 @@ export class Renderer {
     ctx.fillStyle = "#03060c";
     ctx.fillRect(0, 0, this.viewW, this.viewH);
 
-    // aplica a câmera
-    ctx.translate(this.viewW / 2, this.viewH / 2);
+    // aplica a câmera (+ tremor de tela)
+    const sx = this.shake ? (Math.random() * 2 - 1) * this.shake : 0;
+    const sy = this.shake ? (Math.random() * 2 - 1) * this.shake : 0;
+    ctx.translate(this.viewW / 2 + sx, this.viewH / 2 + sy);
     ctx.scale(this.camZoom, this.camZoom);
     ctx.translate(-this.camX, -this.camY);
 
@@ -278,9 +286,25 @@ export class Renderer {
     if (state.players) for (const player of state.players) this.drawTrail(player);
     this.drawParticles(state.particles);
     if (this.debug) this.drawDebug(state);
+
+    if (this.flashAlpha > 0) {                         // vinheta de flash (quase-acidente/morte)
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      const cx = this.viewW / 2, cy = this.viewH / 2;
+      const g = ctx.createRadialGradient(cx, cy, Math.min(this.viewW, this.viewH) * 0.35, cx, cy, Math.max(this.viewW, this.viewH) * 0.62);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, this.flashColor);
+      ctx.globalAlpha = this.flashAlpha;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      ctx.globalAlpha = 1;
+    }
   }
 
   setDebug(v) { this.debug = v; }
+
+  // ---- Juice: tremor de tela + vinheta de flash (disparados pelo main.js) ----
+  addShake(px) { if (px > this.shake) this.shake = px; }
+  addFlash(alpha, color = "#ffffff") { if (alpha > this.flashAlpha) { this.flashAlpha = alpha; this.flashColor = color; } }
 
   // ===== Modo debug (Ctrl+D+B): visualiza o "pathfinding" da IA =====
   // Território (Voronoi multi-fonte): cada célula livre fica com a cor de quem

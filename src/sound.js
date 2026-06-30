@@ -252,6 +252,20 @@ export class AudioEngine {
     this._tone("square", 165, t + 0.045, 0.11, 0.14);
   }
 
+  moveTick(pan = 0, tickMs = BASE_TICK) {   // tique curtíssimo ao assentar o rastro — sobe de tom com a velocidade
+    if (!this.ctx) return;
+    const sn = clamp((BASE_TICK - tickMs) / (BASE_TICK - MIN_TICK), 0, 1);
+    const t = this.ctx.currentTime;
+    this._tone("square", 420 + sn * 520, t, 0.018, 0.035, pan);
+  }
+
+  nearMiss(pan = 0) {   // quase-acidente: "zip" curto e tenso ao raspar numa parede/rastro
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this._tone("sawtooth", 1300, t, 0.05, 0.06, pan);
+    this._tone("sawtooth", 600, t + 0.02, 0.06, 0.05, pan);
+  }
+
   tick(go) {  // bip da contagem regressiva (go = "vai!", mais agudo e longo)
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

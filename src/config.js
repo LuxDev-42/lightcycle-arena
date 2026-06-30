@@ -32,6 +32,13 @@ export const CAM_PAN_TAU = 200;      // const. de tempo (ms) do PAN — menor = 
 export const CAM_ZOOM_TAU = 650;     // const. de tempo (ms) do ZOOM — maior = entra/sai mais suave
 export const CAM_PADDING_CELLS = 26; // folga (em celulas) ao redor das motos — maior = mais margem p/ reagir a paredes
 
+// ---- Juice (feedback visual/sonoro) ----
+export const SHAKE_DEATH = 16;           // tremor de tela na morte (px) — 0 desliga
+export const SHAKE_DECAY_MS = 120;       // decaimento do tremor (const. de tempo)
+export const FLASH_DECAY_MS = 160;       // decaimento do flash/vinheta
+export const NEARMISS_COOLDOWN_MS = 320; // intervalo minimo entre vinhetas de quase-acidente
+export const STEPTICK_MIN_MS = 85;       // intervalo minimo do tique de passo do jogador (anti-spam)
+
 export const DIRS = {
   up:    { x: 0, y: -1 },
   down:  { x: 0, y: 1 },
