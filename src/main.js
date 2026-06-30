@@ -3,9 +3,9 @@
 import {
   COLS, ROWS, OPPOSITE, DIRS, createGrid, idx, isFree, clamp,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_HOLD_MS, ARES_FADE_MS, ARES_HUE,
-  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS,
+  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, ARENA_LAYOUTS, ARENA_NAMES,
 } from "./config.js";
-import { makePlayer, advance, updateParticles, spawnLayout } from "./logic.js";
+import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
 import { Renderer } from "./graphics.js";
 import { AudioEngine } from "./sound.js";
 import { MusicPlayer } from "./music.js";
@@ -22,6 +22,9 @@ const optionsMenuEl = document.getElementById("options-menu");
 const colorsMenuEl = document.getElementById("colors-menu");
 const audioMenuEl = document.getElementById("audio-menu");
 const advMenuEl = document.getElementById("adversaries-menu");
+const mapsMenuEl = document.getElementById("maps-menu");
+const mapValEl = document.getElementById("map-val");
+const mapAuxEl = document.getElementById("map-aux");
 const resultEl = document.getElementById("result");
 const resultTitle = document.getElementById("result-title");
 const resultScore = document.getElementById("result-score");
@@ -58,7 +61,7 @@ function startMusic(danger) { music.start(danger); }
 function stopMusic() { music.stop(); }
 
 // ---- Preferências persistidas (localStorage) ----
-const LS_MUSIC = "lc.musicVol", LS_SFX = "lc.sfxVol", LS_SP = "lc.spCpus", LS_MP = "lc.mpCpus", LS_DIFF = "lc.diff";
+const LS_MUSIC = "lc.musicVol", LS_SFX = "lc.sfxVol", LS_SP = "lc.spCpus", LS_MP = "lc.mpCpus", LS_DIFF = "lc.diff", LS_MAP = "lc.map";
 function loadVol(key, def) {
   try { const v = parseFloat(localStorage.getItem(key)); return Number.isFinite(v) ? clamp(v, 0, 1) : def; }
   catch (e) { return def; }
@@ -90,6 +93,7 @@ const settings = {
   spCpus: loadInt(LS_SP, 1, 1, 9),
   mpCpus: loadInt(LS_MP, 0, 0, 8),
   difficulty: loadInt(LS_DIFF, 2, 1, 3),
+  map: loadInt(LS_MAP, 0, 0, ARENA_LAYOUTS.length - 1),   // mapa escolhido (0 = Vazio)
 };
 function setSpCpus(v) { settings.spCpus = clamp(Math.round(v), 1, 9); spValEl.textContent = settings.spCpus; save(LS_SP, settings.spCpus); }
 function setMpCpus(v) { settings.mpCpus = clamp(Math.round(v), 0, 8); mpValEl.textContent = settings.mpCpus; save(LS_MP, settings.mpCpus); }
@@ -111,6 +115,18 @@ function setDifficulty(v) {
     for (const btn of stepper.querySelectorAll(".step-btn")) btn.style.color = color;
   }
   save(LS_DIFF, settings.difficulty);
+}
+function setMap(v) {
+  settings.map = clamp(Math.round(v), 0, ARENA_LAYOUTS.length - 1);
+  mapValEl.textContent = ARENA_NAMES[settings.map];    // mostra o NOME do mapa
+  mapAuxEl.textContent = "";
+  state.arenaLayout = ARENA_LAYOUTS[settings.map];     // aplica a escolha já
+  save(LS_MAP, settings.map);
+  if (!running && state.roster.length) {               // preview ao vivo no fundo do menu
+    resetRound();
+    renderer.updateCamera(state, 0);
+    renderer.render(state);
+  }
 }
 
 // ---- Cores ----
@@ -157,6 +173,7 @@ function aresSkin() { return { color: hueColor(ARES_HUE), glow: hueGlow(ARES_HUE
 // ---- Estado ----
 const state = {
   grid: null,
+  arenaLayout: [],          // obstaculos da partida (sorteado em startMatch)
   players: null,
   particles: [],
   mode: "cpu",            // "cpu" (1 humano) | "2p" (2 humanos)
@@ -212,6 +229,7 @@ function configureRoster(mode) {
 function resetRound() {
   applyColors();
   state.grid = createGrid();
+  applyArena(state.grid, state.arenaLayout);   // marca os obstaculos do layout da partida
   state.particles = [];
   const total = state.roster.length;
   const layout = spawnLayout(total);
@@ -220,6 +238,7 @@ function resetRound() {
     return makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
   });
   for (const player of state.players) state.grid[idx(player.x, player.y)] = player.id;
+  clearSpawnRunways(state.grid, state.players);   // abre pista segura à frente de cada spawn
   prevAlive = state.players.map(() => true);
   state.roundWinner = null;
   state.dyingTimer = 0;
@@ -433,7 +452,7 @@ function frame(timestamp) {
 }
 
 // ---- Navegação de menus (mouse + teclado WASD/setas) ----
-const NAV_OVERLAYS = [menuEl, optionsMenuEl, colorsMenuEl, audioMenuEl, advMenuEl, resultEl];
+const NAV_OVERLAYS = [menuEl, optionsMenuEl, colorsMenuEl, audioMenuEl, advMenuEl, mapsMenuEl, resultEl];
 const navConfigs = new Map();
 let navItems = null, navIndex = 0;
 
@@ -449,7 +468,7 @@ function navStepper(el, dec, inc) { return { el, type: "value", dec, inc }; }
 
 function buildNav() {
   navConfigs.set(menuEl, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options")]);
-  navConfigs.set(optionsMenuEl, [navBtn("btn-adversaries"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-options-back")]);
+  navConfigs.set(optionsMenuEl, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-options-back")]);
   navConfigs.set(colorsMenuEl, [navSlider(hue1El, 8), navSlider(hue2El, 8), navBtn("btn-colors-back")]);
   navConfigs.set(audioMenuEl, [navSlider(musicVolEl, 5), navSlider(sfxVolEl, 5), navBtn("btn-audio-back")]);
   navConfigs.set(advMenuEl, [
@@ -457,6 +476,10 @@ function buildNav() {
     navStepper(mpValEl.closest(".stepper"), () => setMpCpus(settings.mpCpus - 1), () => setMpCpus(settings.mpCpus + 1)),
     navStepper(diffValEl.closest(".stepper"), () => setDifficulty(settings.difficulty - 1), () => setDifficulty(settings.difficulty + 1)),
     navBtn("btn-adv-back"),
+  ]);
+  navConfigs.set(mapsMenuEl, [
+    navStepper(mapValEl.closest(".stepper"), () => setMap(settings.map - 1), () => setMap(settings.map + 1)),
+    navBtn("btn-maps-back"),
   ]);
   navConfigs.set(resultEl, [navBtn("btn-again"), navBtn("btn-menu")]);
   for (const items of navConfigs.values()) {
@@ -502,6 +525,7 @@ async function startMatch(mode) {
   state.ares = Math.random() < chance;     // sorteia o modo ARES
   aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera so apos a 1a morte)
   configureRoster(mode);                   // ARES força 1 CPU
+  state.arenaLayout = ARENA_LAYOUTS[settings.map];   // mapa escolhido em Opcoes > Mapas (default Vazio)
   showOnly(null);
   resetRound();
   paused = false;
@@ -544,6 +568,7 @@ function openOptions()     { showOnly(optionsMenuEl); }
 function openColors()      { showOnly(colorsMenuEl); }
 function openAudio()       { showOnly(audioMenuEl); }
 function openAdversaries() { showOnly(advMenuEl); }
+function openMaps()        { showOnly(mapsMenuEl); }
 function backToOptions()   { showOnly(optionsMenuEl); }
 function backToMenu()      { showOnly(menuEl); }
 
@@ -596,7 +621,8 @@ const isPlayable = () => state.phase === "playing" || state.phase === "dying";
 const canSteer = () => isPlayable() || state.phase === "countdown";   // dá pra pré-virar na contagem
 const isOpenSub = () => !colorsMenuEl.classList.contains("hidden")
   || !audioMenuEl.classList.contains("hidden")
-  || !advMenuEl.classList.contains("hidden");
+  || !advMenuEl.classList.contains("hidden")
+  || !mapsMenuEl.classList.contains("hidden");
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
@@ -660,6 +686,10 @@ document.getElementById("btn-2p").addEventListener("click", () => startMatch("2p
 document.getElementById("btn-options").addEventListener("click", openOptions);
 document.getElementById("btn-options-back").addEventListener("click", backToMenu);
 document.getElementById("btn-adversaries").addEventListener("click", openAdversaries);
+document.getElementById("btn-maps").addEventListener("click", openMaps);
+document.getElementById("btn-maps-back").addEventListener("click", backToOptions);
+document.getElementById("map-dec").addEventListener("click", () => setMap(settings.map - 1));
+document.getElementById("map-inc").addEventListener("click", () => setMap(settings.map + 1));
 document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
 document.getElementById("btn-colors").addEventListener("click", openColors);
 document.getElementById("btn-colors-back").addEventListener("click", backToOptions);
@@ -701,6 +731,7 @@ applySfxVol(loadVol(LS_SFX, 0.6));
 setSpCpus(settings.spCpus);
 setMpCpus(settings.mpCpus);
 setDifficulty(settings.difficulty);
+setMap(settings.map);
 configureRoster("cpu");                  // roster padrão p/ a cena do menu
 resetRound();
 renderer.updateCamera(state, 0);

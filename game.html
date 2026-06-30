@@ -384,6 +384,7 @@
     <h2 style="color:#cdd9e6">Opções</h2>
     <div class="opt-btns">
       <button id="btn-adversaries" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/><rect x="10" y="10" width="4" height="4"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg>Programas</button>
+      <button id="btn-maps" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>Mapas</button>
       <button id="btn-audio" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5v5h3l4.5 3.5v-12L8 9.5H5z"/><path d="M16 9.5a4 4 0 0 1 0 5"/></svg>Áudio</button>
       <button id="btn-colors" class="neutral"><span class="color-dots"><span class="color-dot" id="cdot1"></span><span class="color-dot" id="cdot2"></span></span>Cores</button>
       <button id="btn-options-back" class="neutral" style="margin-top:10px;"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
@@ -424,6 +425,25 @@
     </div>
     <div class="btns">
       <button id="btn-adv-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Submenu: Mapas -->
+  <div id="maps-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Mapas</h2>
+    <div class="advs">
+      <div class="adv-ctl">
+        <span class="adv-label">Mapa</span>
+        <div class="stepper">
+          <button class="step-btn" id="map-dec">−</button>
+          <span class="step-val" id="map-val" style="font-size:18px;">Vazio</span>
+          <button class="step-btn" id="map-inc">+</button>
+          <span class="adv-aux" id="map-aux"></span>
+        </div>
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btn-maps-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
     </div>
   </div>
 

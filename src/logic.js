@@ -5,7 +5,7 @@
 // Opera sobre um objeto `state` (criado e mantido pelo main.js).
 import {
   CELL, COLS, ROWS, DIRS, OPPOSITE, BASE_TICK, MIN_TICK, MAX_TICK, SPEEDUP, TURN_SPEED_KEEP,
-  VICTORY_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, idx, isFree, clamp,
+  VICTORY_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
 } from "./config.js";
 import { chooseDirection } from "./ai.js";
 
@@ -55,6 +55,28 @@ export function makePlayer(id, startCol, startRow, dir, isAI, skin, label) {
     acc: 0,             // acumulador de tempo desta moto (ms)
     progress: 0,        // 0..1: progresso visual entre um passo e o próximo
   };
+}
+
+// Marca os retângulos de obstáculo como WALL na grade.
+export function applyArena(grid, rects) {
+  if (!rects) return;
+  for (const r of rects)
+    for (let y = r.y; y < r.y + r.h; y++)
+      for (let x = r.x; x < r.x + r.w; x++)
+        if (inBounds(x, y)) grid[idx(x, y)] = WALL;
+}
+
+// Abre uma pista segura à frente de cada spawn (limpa só onde for parede) pra
+// ninguém nascer preso nem morrer de cara num obstáculo.
+export function clearSpawnRunways(grid, players, ahead = 8) {
+  for (const p of players) {
+    grid[idx(p.x, p.y)] = p.id;                       // garante o spawn livre
+    const d = DIRS[p.dir];
+    for (let k = 1; k <= ahead; k++) {
+      const cx = p.x + d.x * k, cy = p.y + d.y * k;
+      if (inBounds(cx, cy) && grid[idx(cx, cy)] === WALL) grid[idx(cx, cy)] = 0;
+    }
+  }
 }
 
 export function spawnExplosion(particles, originX, originY, color) {

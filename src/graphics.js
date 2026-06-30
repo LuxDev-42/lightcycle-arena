@@ -150,6 +150,65 @@ export class Renderer {
     ctx.restore();
   }
 
+  // Desenha os obstáculos como UM objeto sólido: preenche a UNIÃO dos retângulos
+  // (sem linhas internas) e contorna só a SILHUETA externa — em sobreposições
+  // (ex.: a cruz) as arestas internas não são desenhadas, então lê como um bloco
+  // só. Mesmo estilo da borda da arena: contorno neon + glow (vermelho no ARES).
+  drawObstacles(state) {
+    const rects = state.arenaLayout;
+    if (!rects || !rects.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+
+    // 1) preenche a UNIÃO (nonzero) com a cor do fundo → tampa a grade, sem linhas internas
+    ctx.fillStyle = "#03060c";
+    ctx.beginPath();
+    for (const r of rects) ctx.rect(r.x * CELL, r.y * CELL, r.w * CELL, r.h * CELL);
+    ctx.fill();
+
+    // 2) rasteriza em células ocupadas e monta só as arestas de fronteira (célula
+    //    ocupada fazendo divisa com vazia), fundindo colineares em segmentos longos.
+    const occ = new Set();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const r of rects) {
+      for (let y = r.y; y < r.y + r.h; y++)
+        for (let x = r.x; x < r.x + r.w; x++) occ.add(y * COLS + x);
+      if (r.x < minX) minX = r.x;
+      if (r.y < minY) minY = r.y;
+      if (r.x + r.w > maxX) maxX = r.x + r.w;
+      if (r.y + r.h > maxY) maxY = r.y + r.h;
+    }
+    const has = (x, y) => occ.has(y * COLS + x);
+
+    ctx.beginPath();
+    for (let gy = minY; gy <= maxY; gy++) {            // arestas horizontais, por gridline
+      let run = -1;
+      for (let x = minX; x < maxX; x++) {
+        const edge = has(x, gy - 1) !== has(x, gy);    // ocupada de um lado só = fronteira
+        if (edge && run < 0) run = x;
+        else if (!edge && run >= 0) { ctx.moveTo(run * CELL, gy * CELL); ctx.lineTo(x * CELL, gy * CELL); run = -1; }
+      }
+      if (run >= 0) { ctx.moveTo(run * CELL, gy * CELL); ctx.lineTo(maxX * CELL, gy * CELL); }
+    }
+    for (let gx = minX; gx <= maxX; gx++) {            // arestas verticais, por gridline
+      let run = -1;
+      for (let y = minY; y < maxY; y++) {
+        const edge = has(gx - 1, y) !== has(gx, y);
+        if (edge && run < 0) run = y;
+        else if (!edge && run >= 0) { ctx.moveTo(gx * CELL, run * CELL); ctx.lineTo(gx * CELL, y * CELL); run = -1; }
+      }
+      if (run >= 0) { ctx.moveTo(gx * CELL, run * CELL); ctx.lineTo(gx * CELL, maxY * CELL); }
+    }
+
+    ctx.lineWidth = 3 / this.camZoom;
+    ctx.lineCap = "square";                            // fecha os cantos sem deixar falha
+    ctx.strokeStyle = state.ares ? "rgba(255,40,40,0.6)" : "rgba(25,224,255,0.55)";
+    ctx.shadowColor = state.ares ? "rgba(255,40,40,0.65)" : "rgba(25,224,255,0.6)";
+    ctx.shadowBlur = 18;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawHeadlight(player, headX, headY) {
     // Cone de luz — a luz projetada do farol (atrás do bloco)
     const ctx = this.ctx;
@@ -283,6 +342,7 @@ export class Renderer {
     ctx.translate(-this.camX, -this.camY);
 
     this.drawArena(state.ares);
+    this.drawObstacles(state);
     if (state.players) for (const player of state.players) this.drawTrail(player);
     this.drawParticles(state.particles);
     if (this.debug) this.drawDebug(state);

@@ -39,6 +39,17 @@ export const FLASH_DECAY_MS = 160;       // decaimento do flash/vinheta
 export const NEARMISS_COOLDOWN_MS = 320; // intervalo minimo entre vinhetas de quase-acidente
 export const STEPTICK_MIN_MS = 85;       // intervalo minimo do tique de passo do jogador (anti-spam)
 
+// ---- Arena: obstaculos (retangulos em celulas, simetricos, no miolo longe do anel de spawn) ----
+// Tunados pra arena 180x180 (centro 90). Um layout e sorteado por partida (ver main.js).
+export const ARENA_LAYOUTS = [
+  [],                                                                  // arena limpa
+  [{ x: 75, y: 75, w: 30, h: 30 }],                                    // nucleo central
+  [{ x: 64, y: 64, w: 12, h: 12 }, { x: 104, y: 64, w: 12, h: 12 },
+   { x: 64, y: 104, w: 12, h: 12 }, { x: 104, y: 104, w: 12, h: 12 }], // quatro pilares
+  [{ x: 86, y: 58, w: 8, h: 64 }, { x: 58, y: 86, w: 64, h: 8 }],      // cruz central
+];
+export const ARENA_NAMES = ["Vazio", "Núcleo", "Pilares", "Cruz"];     // nomes p/ o menu (mesma ordem do ARENA_LAYOUTS)
+
 export const DIRS = {
   up:    { x: 0, y: -1 },
   down:  { x: 0, y: 1 },
@@ -66,6 +77,7 @@ export const MUSIC_DANGER_TRACKS = [                     // trilha do ARES (arqu
 export function clamp(value, lo, hi) { return value < lo ? lo : (value > hi ? hi : value); }
 
 // ---- Grade (ocupação por célula: 0 = vazia, 1 = P1, 2 = P2) ----
+export const WALL = -1;   // celula de obstaculo na grade (qualquer valor != 0 bloqueia colisao/IA)
 export function createGrid() { return new Array(COLS * ROWS).fill(0); }
 export function idx(col, row) { return row * COLS + col; }
 export function inBounds(col, row) { return col >= 0 && col < COLS && row >= 0 && row < ROWS; }
