@@ -33,9 +33,9 @@ export const ARES_SPEED_MULT = 1.1;  // topo de velocidade do ARES = 10% acima d
 // e converge sem overshoot. O smoothTime ENCURTA com a distância, então a velocidade
 // cresce ~QUADRATICAMENTE com ela: longe = bem mais rápido, perto = bem suave.
 //   smoothTime(d) = max(MIN, SMOOTH / (1 + d/REF))   // velocidade ≈ d / smoothTime(d)
-export const CAM_PAN_SMOOTH = 0.30;   // suavização do CENTRO perto do alvo (s) — maior = mais suave de perto
+export const CAM_PAN_SMOOTH = 0.50;   // suavização do CENTRO perto do alvo (s) — maior = mais suave de perto
 export const CAM_PAN_REF = 30 * CELL; // distância (px) onde o smoothTime do centro cai à metade (ramp quadrática)
-export const CAM_ZOOM_SMOOTH = 0.40;  // suavização do ZOOM perto do alvo (s)
+export const CAM_ZOOM_SMOOTH = 0.60;  // suavização do ZOOM perto do alvo (s)
 export const CAM_ZOOM_REF = 0.4;      // distância (em zoom) onde o smoothTime do zoom cai à metade
 export const CAM_SMOOTH_MIN = 0.08;   // piso do smoothTime (s) — evita ficar instantâneo em distâncias enormes
 export const CAM_PADDING_CELLS = 26; // folga (em celulas) ao redor das motos — maior = mais margem p/ reagir a paredes
