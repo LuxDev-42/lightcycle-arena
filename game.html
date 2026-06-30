@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lightcycle Arena — jogo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  @font-face {
+    font-family: "TronFont";                   /* TRON.TTF do dafont — coloque o arquivo na pasta fonts/ */
+    src: url("fonts/TRON.TTF") format("truetype"),
+         url("fonts/tron.ttf") format("truetype");
+    font-display: swap;
+  }
+  :root {
+    --cyan: #19e0ff;
+    --orange: #ff8a1e;
+    --bg: #03060c;
+    --font-display: "Orbitron", "Segoe UI", system-ui, sans-serif;  /* títulos/UI sci-fi */
+    --font-tron: "TronFont", var(--font-display);   /* fonte Tron real (intro do ARES); cai no display se faltar */
+    --font-ui: "Rajdhani", "Segoe UI", system-ui, sans-serif;       /* texto geral */
+    --radius: 9px;                                                  /* quadrado com bordas suavizadas */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: #d8f6ff;
+    font-family: var(--font-ui);
+    overflow: hidden;
+  }
+  body { filter: saturate(1.2); }   /* deixa todas as cores (UI + jogo) um pouco mais vivas */
+
+  /* Canvas em tela cheia */
+  #game {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: var(--bg);
+    z-index: 0;
+  }
+
+  /* HUD flutuante */
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 16px 26px;
+    pointer-events: none;
+    z-index: 2;
+    background: linear-gradient(to bottom, rgba(3,6,12,.8), rgba(3,6,12,0));
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    font-size: clamp(20px, 3.4vw, 36px);
+    text-transform: uppercase;
+  }
+  .title-1 { color: var(--cyan);   text-shadow: 0 0 12px var(--cyan),   0 0 30px rgba(25,224,255,.4); }
+  .title-2 { color: var(--orange); text-shadow: 0 0 12px var(--orange), 0 0 30px rgba(255,138,30,.4); }
+  #scoreboard {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    align-items: center;
+    justify-content: center;
+    max-width: 92vw;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: .1em;
+  }
+  #scoreboard .sep { color: #3a5563; }
+  .p1 { color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
+  .p2 { color: var(--orange); text-shadow: 0 0 10px var(--orange); }
+
+  #hint {
+    position: fixed;
+    bottom: 12px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px; color: #4d6e7d; letter-spacing: .1em;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* ---- Overlays (menu / cores / resultado) ---- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: rgba(3, 6, 12, 0.82);
+    backdrop-filter: blur(2px);
+    text-align: center;
+    padding: 24px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h2 {
+    font-family: var(--font-display);
+    font-size: clamp(22px, 3.6vw, 36px);
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    text-shadow: 0 0 16px currentColor;
+  }
+  .overlay p { max-width: 500px; line-height: 1.6; color: #9fd4e6; font-size: 18px; }
+
+  /* ---- Placar final: chips coloridos ---- */
+  .score-line { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 580px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 6px 14px; border-radius: var(--radius); border: 1.5px solid;
+    font-family: var(--font-display); font-weight: 700;
+  }
+  .chip-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .chip-name { font-size: 14px; letter-spacing: .06em; }
+  .chip-score { font-size: 18px; color: #fff; font-variant-numeric: tabular-nums; }
+  .chip.win { transform: scale(1.1); }
+  .chip.win .chip-score { text-shadow: 0 0 10px #fff; }
+
+  .btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  /* Opções: coluna em que todos os botões esticam pra largura do maior */
+  .opt-btns { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+  button {
+    background: transparent;
+    color: var(--cyan);
+    border: 2px solid var(--cyan);
+    padding: 12px 22px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all .15s ease;
+    box-shadow: 0 0 14px rgba(25,224,255,.2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  button:hover { background: var(--cyan); color: var(--bg); box-shadow: 0 0 24px var(--cyan); }
+  button.alt { color: var(--orange); border-color: var(--orange); box-shadow: 0 0 14px rgba(255,138,30,.2); }
+  button.alt:hover { background: var(--orange); color: var(--bg); box-shadow: 0 0 24px var(--orange); }
+  button.neutral { color: #cdd9e6; border-color: #6a7d8c; box-shadow: 0 0 14px rgba(140,160,180,.15); }
+  button.neutral:hover { background: #cdd9e6; color: var(--bg); box-shadow: 0 0 22px #cdd9e6; }
+
+  /* ícones de linha (SVG) nos botões — herdam a cor/glow do botão via currentColor */
+  .btn-icon {
+    width: 1.5em; height: 1.5em; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* botão Cores: duas bolinhas com as cores configuradas (P1/P2) */
+  .color-dots { display: inline-flex; gap: 3px; align-items: center; flex: none; }
+  .color-dot { width: 11px; height: 11px; border-radius: 50%; background: #888; }
+
+  /* realce da navegação por teclado (WASD/setas) */
+  .nav-focus { outline: 2px solid #bff4ff; outline-offset: 4px; }
+  button.nav-focus { box-shadow: 0 0 26px currentColor; }
+  .stepper.nav-focus { outline-offset: 7px; }
+  /* sliders têm outline:none próprio — precisa de mais especificidade pra realçar */
+  input[type=range].hue.nav-focus,
+  input[type=range].vol.nav-focus {
+    outline: 2px solid #bff4ff; outline-offset: 7px;
+    box-shadow: 0 0 18px rgba(191,244,255,.45);
+  }
+
+  /* ---- Modo ARES / contagem / fade ---- */
+  #ares-intro {
+    position: fixed; inset: 0; z-index: 6;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; pointer-events: none; text-align: center;
+    background: radial-gradient(circle at 50% 45%, rgba(70,0,0,.5), rgba(3,6,12,.88));
+  }
+  #ares-intro.hidden { display: none; }
+  #ares-terminal {
+    position: absolute; inset: 0;
+    display: flex; align-items: flex-end; justify-content: flex-start;
+    padding: clamp(18px, 3vw, 36px);
+    background: rgba(3,6,12,.96);
+    z-index: 2;
+  }
+  #ares-terminal.hidden { display: none; }
+  #ares-terminal-lines {
+    width: min(78vw, 720px);
+    max-width: 720px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: clamp(12px, 1.25vw, 18px);
+    line-height: 1.35;
+    color: #ff4d4d;
+    text-shadow: 0 0 8px rgba(255,77,77,.38);
+    white-space: pre-wrap;
+    text-align: left;
+    letter-spacing: 0.04em;
+  }
+  .terminal-line {
+    opacity: 0.98;
+    min-height: 1.35em;   /* preserva o espaço das linhas em branco do log */
+  }
+  #ares-title {
+    font-family: var(--font-tron); font-weight: 400;
+    font-size: clamp(60px, 22vw, 280px); line-height: 1.3; letter-spacing: .04em;
+    color: transparent; -webkit-text-fill-color: transparent;     /* só contorno, sem preenchimento */
+    -webkit-text-stroke: 10px #ff2a2a;
+    filter: drop-shadow(0 0 18px rgba(255,40,40,.85)) drop-shadow(0 0 44px rgba(255,40,40,.5));
+  }
+  #ares-sub {
+    font-family: var(--font-tron); font-weight: 400; white-space: nowrap; line-height: 1;
+    color: transparent; -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 5px #ff7a7a;
+    filter: drop-shadow(0 0 12px rgba(255,60,60,.7));
+  }
+  #countdown {
+    position: fixed; inset: 0; z-index: 6;
+    display: flex; align-items: center; justify-content: center; pointer-events: none;
+  }
+  #countdown.hidden { display: none; }
+  #countdown-num {
+    font-family: var(--font-display); font-weight: 900;
+    font-size: clamp(90px, 26vw, 340px); color: #fff;
+    text-shadow: 0 0 24px var(--cyan), 0 0 70px rgba(25,224,255,.6);
+  }
+  #countdown.ares #countdown-num {
+    color: #ff5a5a;
+    text-shadow: 0 0 24px #ff2a2a, 0 0 70px rgba(255,40,40,.6);
+  }
+  @keyframes count-pop { from { transform: scale(1.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #fade {
+    position: fixed; inset: 0; z-index: 100;
+    background: #fff; opacity: 0; pointer-events: none;
+  }
+  .hotkey {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: monospace;
+    opacity: .85;
+    line-height: 1.4;
+  }
+
+  /* ---- Sliders de cor ---- */
+  .colors { display: flex; flex-direction: column; gap: 26px; align-items: center; }
+  .color-ctl { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .color-ctl .lab {
+    font-size: 14px; letter-spacing: .15em; text-transform: uppercase;
+    color: #9fd4e6; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .swatch {
+    width: 18px; height: 18px; border-radius: var(--radius);
+    display: inline-block; background: #fff;
+  }
+  input[type=range].hue {
+    -webkit-appearance: none; appearance: none;
+    width: 340px; max-width: 70vw; height: 20px; border-radius: var(--radius);
+    outline: none; cursor: pointer;
+    background: linear-gradient(to right,
+      hsl(0,100%,55%), hsl(60,100%,55%), hsl(120,100%,55%),
+      hsl(180,100%,55%), hsl(240,100%,55%), hsl(300,100%,55%), hsl(360,100%,55%));
+  }
+  input[type=range].hue::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--thumb, #fff); border: none;
+    box-shadow: 0 0 16px var(--thumb, #fff); cursor: pointer;
+  }
+  input[type=range].hue::-moz-range-thumb {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--thumb, #fff); border: none;
+    box-shadow: 0 0 16px var(--thumb, #fff); cursor: pointer;
+  }
+
+  /* ---- Sliders de volume ---- */
+  input[type=range].vol {
+    -webkit-appearance: none; appearance: none;
+    width: 300px; max-width: 70vw; height: 14px; border-radius: var(--radius);
+    outline: none; cursor: pointer;
+    background: linear-gradient(to right, #0a2230, #19e0ff);
+  }
+  input[type=range].vol::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #cdeefb; border: none; box-shadow: 0 0 12px #19e0ff; cursor: pointer;
+  }
+  input[type=range].vol::-moz-range-thumb {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #cdeefb; border: none; box-shadow: 0 0 12px #19e0ff; cursor: pointer;
+  }
+  .color-ctl .val { color: #cdeefb; font-variant-numeric: tabular-nums; }
+
+  /* ---- Nº de adversários (stepper = bloco arredondado único) ---- */
+  .advs { display: flex; flex-direction: column; gap: 30px; align-items: center; }
+  .adv-ctl { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .adv-label {
+    font-family: var(--font-display); font-size: 13px; letter-spacing: .2em;
+    text-transform: uppercase; color: #9fd4e6;
+  }
+  .stepper {
+    position: relative;
+    display: inline-flex; align-items: stretch;
+    border: 2px solid var(--cyan); border-radius: var(--radius);
+    background: rgba(25,224,255,.06);
+    box-shadow: 0 0 16px rgba(25,224,255,.22), inset 0 0 16px rgba(25,224,255,.06);
+    overflow: hidden;
+  }
+  .step-btn {
+    width: 52px; height: 52px; padding: 0;
+    border: none; border-radius: 0; box-shadow: none;
+    background: transparent; color: var(--cyan);
+    font-family: var(--font-display); font-size: 26px; font-weight: 700;
+    line-height: 1; letter-spacing: 0; text-transform: none;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .step-btn:hover { background: var(--cyan); color: var(--bg); box-shadow: none; }
+  .step-btn:active { background: rgba(25,224,255,.5); }
+  .step-val {
+    min-width: 62px; padding: 0 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-left: 1px solid rgba(25,224,255,.35);
+    border-right: 1px solid rgba(25,224,255,.35);
+    font-family: var(--font-display); font-size: 26px; font-weight: 800;
+    color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px rgba(25,224,255,.5);
+  }
+  .adv-aux {
+    position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+    margin-left: 16px; white-space: nowrap;
+    font-size: 14px; color: #6fa8bd; letter-spacing: .05em;
+  }
+
+  kbd {
+    display: inline-block;
+    background: rgba(25,224,255,.1);
+    border: 1px solid rgba(25,224,255,.3);
+    border-radius: var(--radius);
+    padding: 1px 7px;
+    margin: 0 1px;
+    font-family: monospace;
+    color: #cdeefb;
+  }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="scoreboard"></div>
+  </div>
+
+  <div id="hint"><kbd>P</kbd> pausa · <kbd>Esc</kbd> menu · <kbd>M</kbd> som</div>
+
+  <!-- Menu inicial -->
+  <div id="menu" class="overlay">
+    <h2><span class="title-1">Lightcycle</span> <span class="title-2">Arena</span></h2>
+    <p>Derrube o oponente fazendo ele bater no seu rastro, no dele mesmo ou nas paredes.</p>
+    <div class="btns">
+      <button id="btn-cpu"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>1 Jogador · vs CPU</button>
+      <button id="btn-2p" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19a4.5 4.5 0 0 1 9 0"/><path d="M11.5 19a4.5 4.5 0 0 1 9 0"/></svg>2 Jogadores</button>
+      <button id="btn-options" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/></svg>Opções</button>
+    </div>
+    <div class="keys" id="keys-info" style="font-size:13px;color:#6fa8bd;letter-spacing:.08em;">
+      <b class="p1">P1</b>: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+      &nbsp;&nbsp; <b class="p2">P2</b>: <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+    </div>
+  </div>
+
+  <!-- Submenu de opções -->
+  <div id="options-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Opções</h2>
+    <div class="opt-btns">
+      <button id="btn-adversaries" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/><rect x="10" y="10" width="4" height="4"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg>Programas</button>
+      <button id="btn-audio" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5v5h3l4.5 3.5v-12L8 9.5H5z"/><path d="M16 9.5a4 4 0 0 1 0 5"/></svg>Áudio</button>
+      <button id="btn-colors" class="neutral"><span class="color-dots"><span class="color-dot" id="cdot1"></span><span class="color-dot" id="cdot2"></span></span>Cores</button>
+      <button id="btn-options-back" class="neutral" style="margin-top:10px;"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Submenu: Programas -->
+  <div id="adversaries-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Programas</h2>
+    <div class="advs">
+      <div class="adv-ctl">
+        <span class="adv-label">Singleplayer</span>
+        <div class="stepper">
+          <button class="step-btn" id="sp-dec">−</button>
+          <span class="step-val" id="sp-val">1</span>
+          <button class="step-btn" id="sp-inc">+</button>
+          <span class="adv-aux">Programas</span>
+        </div>
+      </div>
+      <div class="adv-ctl">
+        <span class="adv-label">Multiplayer</span>
+        <div class="stepper">
+          <button class="step-btn" id="mp-dec">−</button>
+          <span class="step-val" id="mp-val">0</span>
+          <button class="step-btn" id="mp-inc">+</button>
+          <span class="adv-aux">Programas + 2 Jogadores</span>
+        </div>
+      </div>
+      <div class="adv-ctl">
+        <span class="adv-label">Dificuldade</span>
+        <div class="stepper">
+          <button class="step-btn" id="diff-dec">−</button>
+          <span class="step-val" id="diff-val">2</span>
+          <button class="step-btn" id="diff-inc">+</button>
+          <span class="adv-aux" id="diff-aux">médio</span>
+        </div>
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btn-adv-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Submenu de cores -->
+  <div id="colors-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Cores</h2>
+    <div class="colors">
+      <div class="color-ctl">
+        <span class="lab">Jogador 1 <span class="swatch" id="sw1"></span></span>
+        <input type="range" id="hue1" class="hue" min="0" max="360" value="190" />
+      </div>
+      <div class="color-ctl">
+        <span class="lab">Jogador 2 <span class="swatch" id="sw2"></span></span>
+        <input type="range" id="hue2" class="hue" min="0" max="360" value="30" />
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btn-colors-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Submenu de áudio -->
+  <div id="audio-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Áudio</h2>
+    <div class="colors">
+      <div class="color-ctl">
+        <span class="lab">Música <span class="val" id="music-val">60</span></span>
+        <input type="range" id="music-vol" class="vol" min="0" max="100" value="60" />
+      </div>
+      <div class="color-ctl">
+        <span class="lab">Efeitos <span class="val" id="sfx-val">60</span></span>
+        <input type="range" id="sfx-vol" class="vol" min="0" max="100" value="60" />
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btn-audio-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Painel de resultado -->
+  <div id="result" class="overlay hidden">
+    <h2 id="result-title" style="color: var(--cyan)">P1 venceu</h2>
+    <p id="result-score" class="score-line">0 — 0</p>
+    <div class="btns">
+      <button id="btn-again"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 1 1-2.3-5.6"/><path d="M20 3v5h-5"/></svg>Again <span class="hotkey">&#8629;</span></button>
+      <button id="btn-menu" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg>Menu <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Intro do modo ARES -->
+  <div id="ares-intro" class="hidden">
+    <div id="ares-terminal" class="hidden">
+      <div id="ares-terminal-lines"></div>
+    </div>
+    <div id="ares-title">ARES</div>
+    <div id="ares-sub">invadiu o sistema</div>
+  </div>
+
+  <!-- Contagem regressiva (3-2-1) -->
+  <div id="countdown" class="hidden"><div id="countdown-num">3</div></div>
+
+  <!-- Fade pra branco (fim do modo ARES) -->
+  <div id="fade"></div>
+
+  <!-- Trilha sonora -->
+  <audio id="bgm" preload="auto"></audio>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

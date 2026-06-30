@@ -1,0 +1,26 @@
+root@grid-core:~# journalctl -p 3 -n 4 --no-pager
+
+Jun 25 00:47:05 grid-core securityd[812]: integrity check FAILED on /usr/sbin/securityd
+Jun 25 00:47:05 grid-core systemd[1]: securityd.service: main process exited, code=killed, status=9/KILL
+Jun 25 00:47:06 grid-core kernel: audit: actor "ares" acquired cap_sys_admin (unverified)
+Jun 25 00:47:06 grid-core systemd[1]: Failed to restart securityd.service: unit is masked.
+
+root@grid-core:~# ps -eo pid,user,comm | grep ares
+ 2241 root     ares-init
+
+root@grid-core:~# kill -9 2241
+-bash: kill: (2241) - Operation not permitted
+root@grid-core:~# sudo kill -9 2241
+ares: signal rejected — process holds cap_sys_admin
+
+root@grid-core:~# iptables -F
+iptables v1.8.7: ruleset locked by external authority (ares)
+root@grid-core:~# dmesg | tail -4
+
+[ 8851.337421] grid: control plane reassigned -> ares
+[ 8851.40288] grid: operator privileges revoked (uid=0)
+[ 8851.448190] grid: outbound link 10.0.0.1:443 established
+[ 8851.501034] ares: takeover complete
+
+root@grid-core:~# whoami
+ares

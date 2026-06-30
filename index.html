@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lightcycle Arena — Tron</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #03060c; overflow: hidden; }
+  #stage {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <!-- O index é só o frame: carrega e roda o jogo dentro do iframe -->
+  <iframe id="stage" src="game.html" title="Lightcycle Arena" allow="autoplay"></iframe>
+  <script>
+    // dá foco ao iframe assim que carrega, pra o teclado funcionar de cara
+    const stage = document.getElementById("stage");
+    stage.addEventListener("load", () => stage.contentWindow.focus());
+  </script>
+</body>
+</html>
