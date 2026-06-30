@@ -26,6 +26,7 @@ const mapsMenuEl = document.getElementById("maps-menu");
 const mapValEl = document.getElementById("map-val");
 const mapAuxEl = document.getElementById("map-aux");
 const resultEl = document.getElementById("result");
+const touchControlsEl = document.getElementById("touch-controls");
 const resultTitle = document.getElementById("result-title");
 const resultScore = document.getElementById("result-score");
 const keysInfo = document.getElementById("keys-info");
@@ -364,6 +365,7 @@ function beginCountdown(fromAres) {
     aresIntroEl.style.opacity = "0";
     setTimeout(() => aresIntroEl.classList.add("hidden"), ARES_FADE_MS + 60);
   }
+  showTouchControls();   // HUD de pilotagem entra junto com a contagem (só em telas de toque)
 }
 function updateCountdown() {
   const n = Math.max(1, Math.ceil(state.countdownTimer / 1000));   // 3, 2, 1
@@ -550,6 +552,7 @@ function again() { startMatch(state.mode); }   // "Again" = nova partida (re-sor
 
 function goMenu() {
   running = false;
+  hideTouchControls();
   state.phase = "menu";
   state.ares = false;                      // modo ARES só sai ao voltar pro menu
   aresTerminalActive = false;              // encerra a sequência do terminal se estava no meio
@@ -590,6 +593,7 @@ function nextRound() {
 function showVictory(champ) {
   state.phase = "result";
   running = false;
+  hideTouchControls();
   audio.setEnginesActive(false);
   audio.victory();
   resultTitle.textContent = `${champ.label} venceu`;
@@ -602,6 +606,7 @@ function showVictory(champ) {
 // Fim do modo ARES: fade pra branco e tudo volta como era, de volta ao menu.
 function aresEnd() {
   running = false;
+  hideTouchControls();
   state.phase = "fade";
   audio.setEnginesActive(false);
   fadeEl.style.transition = "opacity 900ms ease";
@@ -624,6 +629,59 @@ const isOpenSub = () => !colorsMenuEl.classList.contains("hidden")
   || !advMenuEl.classList.contains("hidden")
   || !mapsMenuEl.classList.contains("hidden");
 
+const TURN_LEFT  = { up: "left", left: "down", down: "right", right: "up" };    // giro anti-horário (relativo ao rumo)
+const TURN_RIGHT = { up: "right", right: "down", down: "left", left: "up" };    // giro horário (relativo ao rumo)
+
+// Aplica uma direção ABSOLUTA a um jogador humano (compartilhado por teclado e toque).
+function steer(playerId, dir) {
+  if (!canSteer() || paused) return;
+  const player = state.players[playerId - 1];
+  if (!player || !player.alive || player.isAI) return;
+  if (dir !== OPPOSITE[player.dir]) player.nextDir = dir;     // sem ré
+}
+// Curva RELATIVA ao rumo atual (botões de toque): esquerda/direita = 90°.
+function steerTurn(playerId, side) {
+  const player = state.players[playerId - 1];
+  if (!player) return;
+  const base = player.nextDir || player.dir;
+  steer(playerId, side === "left" ? TURN_LEFT[base] : TURN_RIGHT[base]);
+}
+
+// Esc / botão de sair: depende da fase (no menu volta um nível; no ARES trava até a 1ª morte).
+function handleEscape() {
+  if (state.phase === "menu") {
+    if (isOpenSub()) { audio.uiBack(); backToOptions(); }
+    else if (!optionsMenuEl.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
+  } else if (state.phase === "fade") {
+    // já fazendo o fade — ignora
+  } else if (state.ares) {
+    if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
+    else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
+  } else {
+    audio.uiBack(); goMenu();
+  }
+}
+
+// HUD de toque: visível só em telas de toque (classe `touch` no body) e durante o jogo.
+function showTouchControls() {
+  touchControlsEl.classList.remove("m-cpu", "m-2p");
+  touchControlsEl.classList.add(state.mode === "2p" ? "m-2p" : "m-cpu", "active");
+}
+function hideTouchControls() { touchControlsEl.classList.remove("active"); }
+
+// Detecta toque e liga o HUD; cada botão dispara uma curva relativa (pointerdown = baixa latência).
+if (("ontouchstart" in window) || navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches) {
+  document.body.classList.add("touch");
+}
+function bindTurn(id, playerId, side) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("pointerdown", (e) => { e.preventDefault(); audio.resume(); steerTurn(playerId, side); });
+}
+bindTurn("t-p1-l", 1, "left");  bindTurn("t-p1-r", 1, "right");
+bindTurn("t-p2-l", 2, "left");  bindTurn("t-p2-r", 2, "right");
+const touchExitEl = document.getElementById("touch-exit");
+if (touchExitEl) touchExitEl.addEventListener("pointerdown", (e) => { e.preventDefault(); handleEscape(); });
+
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   audio.resume();   // tecla = gesto: destrava o contexto de áudio (sons de UI/jogo)
@@ -635,20 +693,7 @@ window.addEventListener("keydown", (event) => {
     return;                                                   // não trata Ctrl+D/Ctrl+B como input de jogo
   }
   if (key === "m") { audio.toggleMute(); return; }
-  if (key === "escape") {
-    if (state.phase === "menu") {
-      if (isOpenSub()) { audio.uiBack(); backToOptions(); }
-      else if (!optionsMenuEl.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
-    } else if (state.phase === "fade") {
-      // já fazendo o fade — ignora
-    } else if (state.ares) {
-      if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
-      else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
-    } else {
-      audio.uiBack(); goMenu();
-    }
-    return;
-  }
+  if (key === "escape") { handleEscape(); return; }
   if (navItems) {   // navegação dos menus
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
     if (key === "w" || key === "arrowup") { event.preventDefault(); moveNav(-1); }
@@ -669,9 +714,7 @@ window.addEventListener("keydown", (event) => {
   event.preventDefault();
   let [playerId, dir] = binding;
   if (state.mode === "cpu" && playerId === 2) playerId = 1;   // setas também guiam o P1 no singleplayer
-  const player = state.players[playerId - 1];
-  if (!player || !player.alive || player.isAI) return;
-  if (dir !== OPPOSITE[player.dir]) player.nextDir = dir;
+  steer(playerId, dir);
 }, { passive: false });
 
 window.addEventListener("keyup", (event) => heldKeys.delete(event.key.toLowerCase()));

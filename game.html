@@ -353,6 +353,40 @@
     font-family: monospace;
     color: #cdeefb;
   }
+
+  /* ---- Controles de toque (mobile): só aparecem em telas de toque ---- */
+  body.touch #hint { display: none; }                 /* dicas de teclado não servem no touch */
+  #touch-controls { position: fixed; inset: 0; z-index: 5; pointer-events: none; display: none; }
+  body.touch #touch-controls.active { display: block; }
+  .touch-pad { position: absolute; bottom: max(20px, 5vh); display: flex; gap: 18px; }
+  .touch-btn {
+    pointer-events: auto;
+    width: 78px; height: 78px; border-radius: 16px;
+    background: rgba(25,224,255,.10); border: 2px solid var(--cyan); color: var(--cyan);
+    font-family: var(--font-display); font-size: 34px; font-weight: 700; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 16px rgba(25,224,255,.25), inset 0 0 14px rgba(25,224,255,.08);
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none;
+  }
+  .touch-btn:active { background: var(--cyan); color: var(--bg); }
+  #touch-p2 .touch-btn { border-color: var(--orange); color: var(--orange);
+    background: rgba(255,138,30,.10);
+    box-shadow: 0 0 16px rgba(255,138,30,.25), inset 0 0 14px rgba(255,138,30,.08); }
+  #touch-p2 .touch-btn:active { background: var(--orange); color: var(--bg); }
+  /* 1 jogador: P1 ocupa a base toda, botões nos cantos; P2 escondido */
+  #touch-controls.m-cpu #touch-p1 { left: max(20px,5vw); right: max(20px,5vw); justify-content: space-between; }
+  #touch-controls.m-cpu #touch-p2 { display: none; }
+  /* 2 jogadores: agrupados em cada lado */
+  #touch-controls.m-2p #touch-p1 { left: max(20px,5vw); }
+  #touch-controls.m-2p #touch-p2 { right: max(20px,5vw); }
+  /* sair (equivale ao Esc) */
+  #touch-exit {
+    pointer-events: auto; position: absolute; top: max(14px,2.5vh); right: max(14px,3vw);
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(3,6,12,.55); border: 1px solid rgba(205,217,230,.35); color: #cdd9e6;
+    font-size: 20px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
 </style>
 </head>
 <body>
@@ -363,6 +397,19 @@
   </div>
 
   <div id="hint"><kbd>P</kbd> pausa · <kbd>Esc</kbd> menu · <kbd>M</kbd> som</div>
+
+  <!-- Controles de toque (mobile): botões de virar relativos ao rumo atual -->
+  <div id="touch-controls">
+    <div class="touch-pad" id="touch-p1">
+      <button class="touch-btn" id="t-p1-l" aria-label="Virar à esquerda">◀</button>
+      <button class="touch-btn" id="t-p1-r" aria-label="Virar à direita">▶</button>
+    </div>
+    <div class="touch-pad" id="touch-p2">
+      <button class="touch-btn" id="t-p2-l" aria-label="P2 virar à esquerda">◀</button>
+      <button class="touch-btn" id="t-p2-r" aria-label="P2 virar à direita">▶</button>
+    </div>
+    <button id="touch-exit" aria-label="Sair">✕</button>
+  </div>
 
   <!-- Menu inicial -->
   <div id="menu" class="overlay">
