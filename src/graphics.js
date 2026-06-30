@@ -2,7 +2,11 @@
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
 import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, BASE_TICK, MIN_TICK, CAM_PAN_TAU, CAM_ZOOM_TAU, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
 
-const MAX_DPR = 2;   // teto da resolução de render (≤2x = sem mudança visual; baixe p/ mais FPS em telas hi-DPI)
+// Telas de toque (pixels densos + GPU mais fraca) entram no modo econômico: menos pixels e sem shadowBlur caro.
+const COARSE = (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches)
+  || (typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0);
+const MAX_DPR_FULL = 2;     // desktop: teto de resolução (≤2x = sem mudança visual perceptível)
+const MAX_DPR_LOW = 1.5;    // toque: pixels minúsculos, 1.5x já fica nítido e corta MUITO o custo de pixel
 
 export class Renderer {
   constructor(canvas) {
@@ -20,11 +24,18 @@ export class Renderer {
     this.shake = 0;            // intensidade atual do tremor de tela (px)
     this.flashAlpha = 0;       // alpha atual da vinheta de flash
     this.flashColor = "#ffffff";
+    // Qualidade adaptativa: começa econômico em telas de toque; o monitor de FPS pode baixar mais (só desce).
+    this.lowFx = COARSE;
+    this.maxDpr = COARSE ? MAX_DPR_LOW : MAX_DPR_FULL;
+    this.quality = "auto";     // "auto" | "alto" | "baixo" — controlado por Opções > Gráficos
+    this.adaptive = true;      // ratchet de FPS só atua no modo "auto"
+    this._obLayout = null;     // cache da geometria dos obstáculos (Path2D), reconstruído só ao trocar de mapa
+    this._ftAccum = 0; this._ftCount = 0; this._lastFrameT = 0; this._lastDrop = 0;   // monitor de FPS
     this.resize();
   }
 
   resize() {
-    this.dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
     this.viewW = window.innerWidth;
     this.viewH = window.innerHeight;
     this.canvas.width = Math.max(1, Math.floor(this.viewW * this.dpr));
@@ -35,6 +46,17 @@ export class Renderer {
 
   // Faz a próxima atualização saltar direto para o enquadramento (sem suavizar).
   snapToTarget() { this.snap = true; }
+
+  // Qualidade gráfica (Opções > Gráficos): "auto" detecta toque + ratchet de FPS;
+  // "alto" liga tudo; "baixo" fixa o modo econômico. Reaplica o DPR (resize).
+  setQuality(mode) {
+    this.quality = mode;
+    this.adaptive = (mode === "auto");
+    if (mode === "alto")       { this.lowFx = false;  this.maxDpr = MAX_DPR_FULL; }
+    else if (mode === "baixo") { this.lowFx = true;   this.maxDpr = MAX_DPR_LOW; }
+    else                       { this.lowFx = COARSE; this.maxDpr = COARSE ? MAX_DPR_LOW : MAX_DPR_FULL; }
+    this.resize();
+  }
 
   // ---- Câmera ----
   headWorld(player) {
@@ -141,33 +163,28 @@ export class Renderer {
     ctx.strokeStyle = ares ? "rgba(255,70,70,0.34)" : "rgba(60,200,235,0.30)";
     ctx.stroke();
 
-    // borda da arena (as paredes)
+    // borda da arena (as paredes) — glow por shadowBlur (full) ou camada larga barata (lowFx)
+    if (this.lowFx) {
+      ctx.lineWidth = 7 / this.camZoom;
+      ctx.strokeStyle = ares ? "rgba(255,40,40,0.16)" : "rgba(25,224,255,0.15)";
+      ctx.strokeRect(0, 0, W, H);
+    } else {
+      ctx.shadowColor = ares ? "rgba(255,40,40,0.65)" : "rgba(25,224,255,0.6)";
+      ctx.shadowBlur = 18;
+    }
     ctx.lineWidth = 3 / this.camZoom;
     ctx.strokeStyle = ares ? "rgba(255,40,40,0.6)" : "rgba(25,224,255,0.55)";
-    ctx.shadowColor = ares ? "rgba(255,40,40,0.65)" : "rgba(25,224,255,0.6)";
-    ctx.shadowBlur = 18;
     ctx.strokeRect(0, 0, W, H);
     ctx.restore();
   }
 
-  // Desenha os obstáculos como UM objeto sólido: preenche a UNIÃO dos retângulos
-  // (sem linhas internas) e contorna só a SILHUETA externa — em sobreposições
-  // (ex.: a cruz) as arestas internas não são desenhadas, então lê como um bloco
-  // só. Mesmo estilo da borda da arena: contorno neon + glow (vermelho no ARES).
-  drawObstacles(state) {
-    const rects = state.arenaLayout;
-    if (!rects || !rects.length) return;
-    const ctx = this.ctx;
-    ctx.save();
+  // Monta (uma vez por layout) a geometria dos obstáculos como Path2D: a UNIÃO
+  // preenchida e a SILHUETA externa (arestas de fronteira fundidas em segmentos
+  // longos). Cacheado — antes isso rodava todo frame (Set + ~8k iterações), pesado no mobile.
+  _buildObstacles(rects) {
+    const fill = new Path2D();
+    for (const r of rects) fill.rect(r.x * CELL, r.y * CELL, r.w * CELL, r.h * CELL);
 
-    // 1) preenche a UNIÃO (nonzero) com a cor do fundo → tampa a grade, sem linhas internas
-    ctx.fillStyle = "#03060c";
-    ctx.beginPath();
-    for (const r of rects) ctx.rect(r.x * CELL, r.y * CELL, r.w * CELL, r.h * CELL);
-    ctx.fill();
-
-    // 2) rasteriza em células ocupadas e monta só as arestas de fronteira (célula
-    //    ocupada fazendo divisa com vazia), fundindo colineares em segmentos longos.
     const occ = new Set();
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const r of rects) {
@@ -180,32 +197,50 @@ export class Renderer {
     }
     const has = (x, y) => occ.has(y * COLS + x);
 
-    ctx.beginPath();
+    const stroke = new Path2D();
     for (let gy = minY; gy <= maxY; gy++) {            // arestas horizontais, por gridline
       let run = -1;
       for (let x = minX; x < maxX; x++) {
         const edge = has(x, gy - 1) !== has(x, gy);    // ocupada de um lado só = fronteira
         if (edge && run < 0) run = x;
-        else if (!edge && run >= 0) { ctx.moveTo(run * CELL, gy * CELL); ctx.lineTo(x * CELL, gy * CELL); run = -1; }
+        else if (!edge && run >= 0) { stroke.moveTo(run * CELL, gy * CELL); stroke.lineTo(x * CELL, gy * CELL); run = -1; }
       }
-      if (run >= 0) { ctx.moveTo(run * CELL, gy * CELL); ctx.lineTo(maxX * CELL, gy * CELL); }
+      if (run >= 0) { stroke.moveTo(run * CELL, gy * CELL); stroke.lineTo(maxX * CELL, gy * CELL); }
     }
     for (let gx = minX; gx <= maxX; gx++) {            // arestas verticais, por gridline
       let run = -1;
       for (let y = minY; y < maxY; y++) {
         const edge = has(gx - 1, y) !== has(gx, y);
         if (edge && run < 0) run = y;
-        else if (!edge && run >= 0) { ctx.moveTo(gx * CELL, run * CELL); ctx.lineTo(gx * CELL, y * CELL); run = -1; }
+        else if (!edge && run >= 0) { stroke.moveTo(gx * CELL, run * CELL); stroke.lineTo(gx * CELL, y * CELL); run = -1; }
       }
-      if (run >= 0) { ctx.moveTo(gx * CELL, run * CELL); ctx.lineTo(gx * CELL, maxY * CELL); }
+      if (run >= 0) { stroke.moveTo(gx * CELL, run * CELL); stroke.lineTo(gx * CELL, maxY * CELL); }
     }
+    this._obFill = fill; this._obStroke = stroke; this._obLayout = rects;
+  }
 
+  // Desenha os obstáculos como UM objeto sólido: união preenchida + silhueta externa
+  // (sem arestas internas). Glow por shadowBlur (full) ou camada larga barata (lowFx).
+  drawObstacles(state) {
+    const rects = state.arenaLayout;
+    if (!rects || !rects.length) { this._obLayout = rects; return; }
+    if (rects !== this._obLayout) this._buildObstacles(rects);   // recalcula só quando o mapa muda
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = "#03060c";                         // tampa a grade dentro do bloco
+    ctx.fill(this._obFill);
+    ctx.lineCap = "square";
+    if (this.lowFx) {                                  // glow barato: passada larga e fraca + núcleo
+      ctx.lineWidth = 6 / this.camZoom;
+      ctx.strokeStyle = state.ares ? "rgba(255,40,40,0.16)" : "rgba(25,224,255,0.15)";
+      ctx.stroke(this._obStroke);
+    } else {
+      ctx.shadowColor = state.ares ? "rgba(255,40,40,0.65)" : "rgba(25,224,255,0.6)";
+      ctx.shadowBlur = 18;
+    }
     ctx.lineWidth = 3 / this.camZoom;
-    ctx.lineCap = "square";                            // fecha os cantos sem deixar falha
     ctx.strokeStyle = state.ares ? "rgba(255,40,40,0.6)" : "rgba(25,224,255,0.55)";
-    ctx.shadowColor = state.ares ? "rgba(255,40,40,0.65)" : "rgba(25,224,255,0.6)";
-    ctx.shadowBlur = 18;
-    ctx.stroke();
+    ctx.stroke(this._obStroke);
     ctx.restore();
   }
 
@@ -251,8 +286,7 @@ export class Renderer {
     ctx.strokeStyle = "rgba(255,255,255,0.96)";
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
-    ctx.shadowColor = `hsla(${player.hue}, 100%, 72%, 0.95)`;
-    ctx.shadowBlur = 8;
+    if (!this.lowFx) { ctx.shadowColor = `hsla(${player.hue}, 100%, 72%, 0.95)`; ctx.shadowBlur = 8; }
     ctx.beginPath();
     ctx.moveTo(barX + side.x * halfLength, barY + side.y * halfLength);
     ctx.lineTo(barX - side.x * halfLength, barY - side.y * halfLength);
@@ -281,12 +315,14 @@ export class Renderer {
       ctx.lineTo(headX, headY);
     }
 
-    // glow externo (sem shadow, barato)
-    ctx.globalAlpha = 0.45;
-    ctx.strokeStyle = player.glow;
-    ctx.lineWidth = CELL * 1.35;
-    ctx.stroke();
-    
+    // glow externo (sem shadow, barato) — pulado no lowFx p/ não dobrar o custo do rastro
+    if (!this.lowFx) {
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = player.glow;
+      ctx.lineWidth = CELL * 1.35;
+      ctx.stroke();
+    }
+
     // núcleo
     ctx.globalAlpha = 1;
     ctx.strokeStyle = player.color;
@@ -296,14 +332,22 @@ export class Renderer {
 
     // cabeça brilhante (só vivo) — o bloco do derrotado some, a trilha fica
     if (player.alive) {
-      this.drawHeadlight(player, headX, headY);
+      if (!this.lowFx) this.drawHeadlight(player, headX, headY);   // cone de luz (gradiente + lighter): caro no mobile
       ctx.save();
-      ctx.shadowColor = player.glow;
-      ctx.shadowBlur = 18;
+      if (this.lowFx) {
+        // bloom barato sem shadowBlur: halo translúcido + núcleo branco + miolo colorido
+        ctx.globalAlpha = 0.5; ctx.fillStyle = player.glow;
+        const glowSize = CELL + 8;
+        ctx.fillRect(headX - glowSize / 2, headY - glowSize / 2, glowSize, glowSize);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.shadowColor = player.glow;
+        ctx.shadowBlur = 18;
+      }
       ctx.fillStyle = "#ffffff";
       const outerSize = CELL + 2;
       ctx.fillRect(headX - outerSize / 2, headY - outerSize / 2, outerSize, outerSize);
-      ctx.shadowBlur = 24;
+      if (!this.lowFx) ctx.shadowBlur = 24;
       ctx.fillStyle = player.color;
       const innerSize = CELL - 1;
       ctx.fillRect(headX - innerSize / 2, headY - innerSize / 2, innerSize, innerSize);
@@ -316,10 +360,11 @@ export class Renderer {
     if (!particles.length) return;
     const ctx = this.ctx;
     ctx.save();
+    const low = this.lowFx;
+    if (low) ctx.globalCompositeOperation = "lighter";   // glow aditivo barato no lugar do shadowBlur por partícula
     for (const particle of particles) {
       ctx.globalAlpha = Math.max(0, particle.life);
-      ctx.shadowColor = particle.color;
-      ctx.shadowBlur = 10;
+      if (!low) { ctx.shadowColor = particle.color; ctx.shadowBlur = 10; }
       ctx.fillStyle = particle.color;
       const drawSize = particle.size * (0.5 + particle.life * 0.5);
       ctx.fillRect(particle.x - drawSize / 2, particle.y - drawSize / 2, drawSize, drawSize);
@@ -329,6 +374,7 @@ export class Renderer {
 
   render(state) {
     const ctx = this.ctx;
+    this._monitorPerf();   // qualidade adaptativa (ratchet) durante o jogo
     // base em coordenadas de tela (com devicePixelRatio)
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = "#03060c";
@@ -357,6 +403,26 @@ export class Renderer {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, this.viewW, this.viewH);
       ctx.globalAlpha = 1;
+    }
+  }
+
+  // Monitora o FPS durante o jogo e baixa a qualidade se ficar lento de forma
+  // sustentada (ratchet: só desce, sem oscilar). 1º corta os FX caros, depois a resolução.
+  _monitorPerf() {
+    const now = performance.now();
+    const last = this._lastFrameT;
+    this._lastFrameT = now;
+    if (!this.adaptive || !last) return;
+    const ft = now - last;
+    if (ft > 100) { this._ftAccum = 0; this._ftCount = 0; return; }   // gap (menu/idle) → não conta
+    this._ftAccum += ft; this._ftCount++;
+    if (this._ftCount < 45) return;
+    const avg = this._ftAccum / this._ftCount;
+    this._ftAccum = 0; this._ftCount = 0;
+    if (avg > 22 && now - this._lastDrop > 1500) {     // < ~45 FPS sustentado → baixa um nível
+      this._lastDrop = now;
+      if (!this.lowFx) this.lowFx = true;              // passo 1: corta os efeitos caros (shadowBlur etc.)
+      else if (this.maxDpr > 1) { this.maxDpr = Math.max(1, this.maxDpr - 0.5); this.resize(); }  // passo 2: baixa a resolução
     }
   }
 

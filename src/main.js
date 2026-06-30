@@ -25,6 +25,9 @@ const advMenuEl = document.getElementById("adversaries-menu");
 const mapsMenuEl = document.getElementById("maps-menu");
 const mapValEl = document.getElementById("map-val");
 const mapAuxEl = document.getElementById("map-aux");
+const graphicsMenuEl = document.getElementById("graphics-menu");
+const gfxValEl = document.getElementById("gfx-val");
+const gfxAuxEl = document.getElementById("gfx-aux");
 const resultEl = document.getElementById("result");
 const touchControlsEl = document.getElementById("touch-controls");
 const resultTitle = document.getElementById("result-title");
@@ -62,7 +65,7 @@ function startMusic(danger) { music.start(danger); }
 function stopMusic() { music.stop(); }
 
 // ---- Preferências persistidas (localStorage) ----
-const LS_MUSIC = "lc.musicVol", LS_SFX = "lc.sfxVol", LS_SP = "lc.spCpus", LS_MP = "lc.mpCpus", LS_DIFF = "lc.diff", LS_MAP = "lc.map";
+const LS_MUSIC = "lc.musicVol", LS_SFX = "lc.sfxVol", LS_SP = "lc.spCpus", LS_MP = "lc.mpCpus", LS_DIFF = "lc.diff", LS_MAP = "lc.map", LS_GFX = "lc.gfx";
 function loadVol(key, def) {
   try { const v = parseFloat(localStorage.getItem(key)); return Number.isFinite(v) ? clamp(v, 0, 1) : def; }
   catch (e) { return def; }
@@ -95,6 +98,7 @@ const settings = {
   mpCpus: loadInt(LS_MP, 0, 0, 8),
   difficulty: loadInt(LS_DIFF, 2, 1, 3),
   map: loadInt(LS_MAP, 0, 0, ARENA_LAYOUTS.length - 1),   // mapa escolhido (0 = Vazio)
+  gfx: loadInt(LS_GFX, 0, 0, 2),                          // qualidade gráfica (0 = Auto)
 };
 function setSpCpus(v) { settings.spCpus = clamp(Math.round(v), 1, 9); spValEl.textContent = settings.spCpus; save(LS_SP, settings.spCpus); }
 function setMpCpus(v) { settings.mpCpus = clamp(Math.round(v), 0, 8); mpValEl.textContent = settings.mpCpus; save(LS_MP, settings.mpCpus); }
@@ -128,6 +132,17 @@ function setMap(v) {
     renderer.updateCamera(state, 0);
     renderer.render(state);
   }
+}
+const GFX_MODES = ["auto", "alto", "baixo"];
+const GFX_NAMES = ["Auto", "Alto", "Baixo"];
+const GFX_HINTS = ["detecta o aparelho", "tudo ligado", "mais FPS"];
+function setGfx(v) {
+  settings.gfx = clamp(Math.round(v), 0, GFX_MODES.length - 1);
+  gfxValEl.textContent = GFX_NAMES[settings.gfx];
+  gfxAuxEl.textContent = GFX_HINTS[settings.gfx];
+  save(LS_GFX, settings.gfx);
+  renderer.setQuality(GFX_MODES[settings.gfx]);        // aplica no renderer (lowFx / DPR / ratchet)
+  if (!running && state.roster.length) renderer.render(state);   // reflete na hora (o resize limpou o canvas)
 }
 
 // ---- Cores ----
@@ -454,7 +469,7 @@ function frame(timestamp) {
 }
 
 // ---- Navegação de menus (mouse + teclado WASD/setas) ----
-const NAV_OVERLAYS = [menuEl, optionsMenuEl, colorsMenuEl, audioMenuEl, advMenuEl, mapsMenuEl, resultEl];
+const NAV_OVERLAYS = [menuEl, optionsMenuEl, colorsMenuEl, audioMenuEl, advMenuEl, mapsMenuEl, graphicsMenuEl, resultEl];
 const navConfigs = new Map();
 let navItems = null, navIndex = 0;
 
@@ -470,7 +485,7 @@ function navStepper(el, dec, inc) { return { el, type: "value", dec, inc }; }
 
 function buildNav() {
   navConfigs.set(menuEl, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options")]);
-  navConfigs.set(optionsMenuEl, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-options-back")]);
+  navConfigs.set(optionsMenuEl, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-options-back")]);
   navConfigs.set(colorsMenuEl, [navSlider(hue1El, 8), navSlider(hue2El, 8), navBtn("btn-colors-back")]);
   navConfigs.set(audioMenuEl, [navSlider(musicVolEl, 5), navSlider(sfxVolEl, 5), navBtn("btn-audio-back")]);
   navConfigs.set(advMenuEl, [
@@ -482,6 +497,10 @@ function buildNav() {
   navConfigs.set(mapsMenuEl, [
     navStepper(mapValEl.closest(".stepper"), () => setMap(settings.map - 1), () => setMap(settings.map + 1)),
     navBtn("btn-maps-back"),
+  ]);
+  navConfigs.set(graphicsMenuEl, [
+    navStepper(gfxValEl.closest(".stepper"), () => setGfx(settings.gfx - 1), () => setGfx(settings.gfx + 1)),
+    navBtn("btn-graphics-back"),
   ]);
   navConfigs.set(resultEl, [navBtn("btn-again"), navBtn("btn-menu")]);
   for (const items of navConfigs.values()) {
@@ -572,6 +591,7 @@ function openColors()      { showOnly(colorsMenuEl); }
 function openAudio()       { showOnly(audioMenuEl); }
 function openAdversaries() { showOnly(advMenuEl); }
 function openMaps()        { showOnly(mapsMenuEl); }
+function openGraphics()    { showOnly(graphicsMenuEl); }
 function backToOptions()   { showOnly(optionsMenuEl); }
 function backToMenu()      { showOnly(menuEl); }
 
@@ -627,7 +647,8 @@ const canSteer = () => isPlayable() || state.phase === "countdown";   // dá pra
 const isOpenSub = () => !colorsMenuEl.classList.contains("hidden")
   || !audioMenuEl.classList.contains("hidden")
   || !advMenuEl.classList.contains("hidden")
-  || !mapsMenuEl.classList.contains("hidden");
+  || !mapsMenuEl.classList.contains("hidden")
+  || !graphicsMenuEl.classList.contains("hidden");
 
 const TURN_LEFT  = { up: "left", left: "down", down: "right", right: "up" };    // giro anti-horário (relativo ao rumo)
 const TURN_RIGHT = { up: "right", right: "down", down: "left", left: "up" };    // giro horário (relativo ao rumo)
@@ -733,6 +754,10 @@ document.getElementById("btn-maps").addEventListener("click", openMaps);
 document.getElementById("btn-maps-back").addEventListener("click", backToOptions);
 document.getElementById("map-dec").addEventListener("click", () => setMap(settings.map - 1));
 document.getElementById("map-inc").addEventListener("click", () => setMap(settings.map + 1));
+document.getElementById("btn-graphics").addEventListener("click", openGraphics);
+document.getElementById("btn-graphics-back").addEventListener("click", backToOptions);
+document.getElementById("gfx-dec").addEventListener("click", () => setGfx(settings.gfx - 1));
+document.getElementById("gfx-inc").addEventListener("click", () => setGfx(settings.gfx + 1));
 document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
 document.getElementById("btn-colors").addEventListener("click", openColors);
 document.getElementById("btn-colors-back").addEventListener("click", backToOptions);
@@ -775,6 +800,7 @@ setSpCpus(settings.spCpus);
 setMpCpus(settings.mpCpus);
 setDifficulty(settings.difficulty);
 setMap(settings.map);
+setGfx(settings.gfx);                     // aplica a qualidade gráfica salva (lowFx/DPR)
 configureRoster("cpu");                  // roster padrão p/ a cena do menu
 resetRound();
 renderer.updateCamera(state, 0);
