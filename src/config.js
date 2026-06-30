@@ -28,15 +28,16 @@ export const ARES_SPEEDUP = 0.95;    // aceleração do programa ARES (bem mais 
 export const ARES_SPEED_MULT = 1.1;  // topo de velocidade do ARES = 10% acima do normal (minTick ÷ 1.1)
 
 // ---- Camera ----
-// O "atual" persegue o "alvo" (centro entre as motos + zoom) com VELOCIDADE
-// PROPORCIONAL À DISTÂNCIA: longe do alvo = rápido, perto = suave. Some o "snap"
-// do tau fixo na virada afastar↔aproximar. taxa(1/s) = BASE + GAIN·d/(d+REF).
-export const CAM_PAN_BASE = 3;        // perseguição do CENTRO perto do alvo (1/s) — maior = mais grudado
-export const CAM_PAN_GAIN = 8;        // ganho de velocidade do centro conforme a distância cresce
-export const CAM_PAN_REF = 50 * CELL; // distância (px) onde o ganho do centro chega à metade
-export const CAM_ZOOM_BASE = 2.5;     // perseguição do ZOOM perto do alvo (1/s)
-export const CAM_ZOOM_GAIN = 7;       // ganho de velocidade do zoom conforme a distância cresce (afastar↔aproximar)
-export const CAM_ZOOM_REF = 0.5;      // distância (em zoom) onde o ganho do zoom chega à metade
+// O "atual" persegue o "alvo" (centro + zoom) com SmoothDamp (criticamente
+// amortecido): a velocidade é um ESTADO suavizado → muda de direção sem solavanco
+// e converge sem overshoot. O smoothTime ENCURTA com a distância, então a velocidade
+// cresce ~QUADRATICAMENTE com ela: longe = bem mais rápido, perto = bem suave.
+//   smoothTime(d) = max(MIN, SMOOTH / (1 + d/REF))   // velocidade ≈ d / smoothTime(d)
+export const CAM_PAN_SMOOTH = 0.30;   // suavização do CENTRO perto do alvo (s) — maior = mais suave de perto
+export const CAM_PAN_REF = 30 * CELL; // distância (px) onde o smoothTime do centro cai à metade (ramp quadrática)
+export const CAM_ZOOM_SMOOTH = 0.40;  // suavização do ZOOM perto do alvo (s)
+export const CAM_ZOOM_REF = 0.4;      // distância (em zoom) onde o smoothTime do zoom cai à metade
+export const CAM_SMOOTH_MIN = 0.08;   // piso do smoothTime (s) — evita ficar instantâneo em distâncias enormes
 export const CAM_PADDING_CELLS = 26; // folga (em celulas) ao redor das motos — maior = mais margem p/ reagir a paredes
 
 // ---- Juice (feedback visual/sonoro) ----

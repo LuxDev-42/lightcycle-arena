@@ -1,7 +1,20 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_BASE, CAM_PAN_GAIN, CAM_PAN_REF, CAM_ZOOM_BASE, CAM_ZOOM_GAIN, CAM_ZOOM_REF, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
 import { drawDebug } from "./debug-overlay.js";
+
+// Suavização criticamente amortecida (SmoothDamp, à la Unity): persegue `target`
+// mantendo a VELOCIDADE como estado (em velObj[key]) → muda de direção sem
+// solavanco e converge sem overshoot. `smoothTime` em segundos, `dt` em segundos.
+function smoothDamp(current, target, velObj, key, smoothTime, dt) {
+  const omega = 2 / smoothTime;
+  const x = omega * dt;
+  const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const change = current - target;
+  const temp = (velObj[key] + omega * change) * dt;
+  velObj[key] = (velObj[key] - omega * temp) * exp;
+  return target + (change + temp) * exp;
+}
 
 // Telas de toque (pixels densos + GPU mais fraca) entram no modo econômico: menos pixels e sem shadowBlur caro.
 const COARSE = (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches)
@@ -20,6 +33,7 @@ export class Renderer {
     this.camX = W / 2;
     this.camY = H / 2;
     this.camZoom = 1;
+    this.camVel = { x: 0, y: 0, zoom: 0 };   // velocidade da câmera (estado do SmoothDamp)
     this.snap = true;
     this.debug = false;
     this.shake = 0;            // intensidade atual do tremor de tela (px)
@@ -111,22 +125,22 @@ export class Renderer {
     if (!state.players) return;
     const target = this.cameraTarget(state);
     if (this.snap) {
-      this.camX = target.x; this.camY = target.y; this.camZoom = target.zoom; this.snap = false;
+      this.camX = target.x; this.camY = target.y; this.camZoom = target.zoom;
+      this.camVel.x = this.camVel.y = this.camVel.zoom = 0;   // zera a inércia ao saltar (início de round)
+      this.snap = false;
       return;
     }
-    // Centro: velocidade ∝ distância (longe = rápido, perto = suave). Frame-rate independente.
+    // Pan (centro) e zoom seguem o alvo via SmoothDamp — velocidade contínua, sem jerk na virada.
+    // O smoothTime encurta com a distância → velocidade cresce ~quadraticamente (longe = mais rápido).
+    const dts = dt / 1000;
     const dx = target.x - this.camX, dy = target.y - this.camY;
     const distC = Math.hypot(dx, dy);
-    const rateC = CAM_PAN_BASE + CAM_PAN_GAIN * (distC / (distC + CAM_PAN_REF));
-    const aC = 1 - Math.exp(-rateC * dt / 1000);
-    this.camX += dx * aC;
-    this.camY += dy * aC;
-    // Zoom: mesma lei, na escala dele — responsivo quando muda muito (afastar↔aproximar), suave no ajuste fino.
-    const dz = target.zoom - this.camZoom;
-    const distZ = Math.abs(dz);
-    const rateZ = CAM_ZOOM_BASE + CAM_ZOOM_GAIN * (distZ / (distZ + CAM_ZOOM_REF));
-    const aZ = 1 - Math.exp(-rateZ * dt / 1000);
-    this.camZoom += dz * aZ;
+    const stC = Math.max(CAM_SMOOTH_MIN, CAM_PAN_SMOOTH / (1 + distC / CAM_PAN_REF));
+    this.camX = smoothDamp(this.camX, target.x, this.camVel, "x", stC, dts);
+    this.camY = smoothDamp(this.camY, target.y, this.camVel, "y", stC, dts);   // mesma smoothTime nos 2 eixos (coerente)
+    const distZ = Math.abs(target.zoom - this.camZoom);
+    const stZ = Math.max(CAM_SMOOTH_MIN, CAM_ZOOM_SMOOTH / (1 + distZ / CAM_ZOOM_REF));
+    this.camZoom = smoothDamp(this.camZoom, target.zoom, this.camVel, "zoom", stZ, dts);
   }
 
   // ---- Desenho ----
