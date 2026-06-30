@@ -46,6 +46,8 @@ export const el = {
   diffAux: $("diff-aux"),
   mapVal: $("map-val"),
   mapAux: $("map-aux"),
+  sizeVal: $("size-val"),
+  sizeAux: $("size-aux"),
   gfxVal: $("gfx-val"),
   gfxAux: $("gfx-aux"),
 

@@ -2,10 +2,13 @@
 // Módulo "folha": não importa nada, todos os outros importam daqui.
 
 export const CELL = 12;        // unidade de mundo (px) por célula
-export const COLS = 180;
-export const ROWS = 180;
-export const W = COLS * CELL;  // largura do mundo (px)
-export const H = ROWS * CELL;  // altura do mundo (px)
+// Arena quadrada — dimensões MUTÁVEIS (Opções > Mapas > Tamanho), atualizadas por
+// setArenaSize(). São `let` exportadas: os importadores veem o valor atual (live binding).
+// Quem cacheia tamanho (buffers da IA) precisa realocar quando isso muda.
+export let COLS = 180;
+export let ROWS = 180;
+export let W = COLS * CELL;    // largura do mundo (px) — derivada
+export let H = ROWS * CELL;    // altura do mundo (px) — derivada
 
 export const BASE_TICK = 70;    // ms por passo (menor = mais rápido)
 export const MIN_TICK = 42;           // intervalo mínimo = velocidade máxima
@@ -47,16 +50,39 @@ export const FLASH_DECAY_MS = 160;       // decaimento do flash/vinheta
 export const NEARMISS_COOLDOWN_MS = 320; // intervalo minimo entre vinhetas de quase-acidente
 export const STEPTICK_MIN_MS = 85;       // intervalo minimo do tique de passo do jogador (anti-spam)
 
-// ---- Arena: obstaculos (retangulos em celulas, simetricos, no miolo longe do anel de spawn) ----
-// Tunados pra arena 180x180 (centro 90). Um layout e sorteado por partida (ver main.js).
-export const ARENA_LAYOUTS = [
-  [],                                                                  // arena limpa
-  [{ x: 75, y: 75, w: 30, h: 30 }],                                    // nucleo central
-  [{ x: 64, y: 64, w: 12, h: 12 }, { x: 104, y: 64, w: 12, h: 12 },
-   { x: 64, y: 104, w: 12, h: 12 }, { x: 104, y: 104, w: 12, h: 12 }], // quatro pilares
-  [{ x: 86, y: 58, w: 8, h: 64 }, { x: 58, y: 86, w: 64, h: 8 }],      // cruz central
-];
-export const ARENA_NAMES = ["Vazio", "Núcleo", "Pilares", "Cruz"];     // nomes p/ o menu (mesma ordem do ARENA_LAYOUTS)
+// ---- Tamanho da arena (quadrada) ----
+export const ARENA_SIZES = [120, 180, 240, 360];                        // células por lado (default = 180 = "Média")
+export const ARENA_SIZE_NAMES = ["Pequena", "Média", "Grande", "Enorme"];
+export function setArenaSize(n) { COLS = n; ROWS = n; W = n * CELL; H = n * CELL; }
+
+// ---- Arena: obstáculos ----
+// Layouts gerados PARAMETRICAMENTE em função do tamanho `n` (centro = n/2): ficam
+// centrados e proporcionais em qualquer arena. Em n=180 reproduzem os layouts
+// originais exatos. Mesma ordem dos nomes abaixo.
+export const ARENA_NAMES = ["Vazio", "Núcleo", "Pilares", "Cruz"];
+export function buildArenaLayout(mapIndex, n) {
+  const c = n / 2, R = Math.round;
+  if (mapIndex === 1) {                                  // Núcleo: quadrado central
+    const s = R(n / 6);
+    return [{ x: R(c - s / 2), y: R(c - s / 2), w: s, h: s }];
+  }
+  if (mapIndex === 2) {                                  // Pilares: 4 quadrados
+    const s = R(n / 15), o = R(n * 0.078);
+    const a = R(c) - o - s, b = R(c) + o;
+    return [
+      { x: a, y: a, w: s, h: s }, { x: b, y: a, w: s, h: s },
+      { x: a, y: b, w: s, h: s }, { x: b, y: b, w: s, h: s },
+    ];
+  }
+  if (mapIndex === 3) {                                  // Cruz central
+    const len = R(n * 0.355), th = R(n / 22);
+    return [
+      { x: R(c - th / 2), y: R(c - len / 2), w: th, h: len },
+      { x: R(c - len / 2), y: R(c - th / 2), w: len, h: th },
+    ];
+  }
+  return [];                                             // Vazio (0)
+}
 
 export const DIRS = {
   up:    { x: 0, y: -1 },

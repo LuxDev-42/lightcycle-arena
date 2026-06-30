@@ -5,7 +5,8 @@
 import {
   COLS, DIRS, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
-  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, ARENA_LAYOUTS, ARENA_NAMES,
+  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS,
+  ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
 } from "./config.js";
 import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
 import { el } from "./dom.js";
@@ -25,6 +26,20 @@ const DIFF_COLORS = ["", "#46e07a", "#e8eef3", "#ff8a1e"]; // 1 verde · 2 neutr
 const GFX_MODES = ["auto", "alto", "baixo"];
 const GFX_NAMES = ["Auto", "Alto", "Baixo"];
 const GFX_HINTS = ["detecta o aparelho", "tudo ligado", "mais FPS"];
+
+// O layout dos obstáculos depende do MAPA e do TAMANHO da arena; recalcula os dois.
+function applyArenaConfig() {
+  setArenaSize(ARENA_SIZES[settings.arenaSize ?? 1]);     // muda COLS/ROWS/W/H
+  state.arenaLayout = buildArenaLayout(settings.map ?? 0, COLS);
+}
+// Reflete a arena no fundo do menu na hora (só fora de partida e com roster montado).
+function previewArena() {
+  if (!app.running && state.roster.length) {
+    resetRound();
+    renderer.updateCamera(state, 0);
+    renderer.render(state);
+  }
+}
 
 function defineSettings() {
   defineSetting("music", { ls: "lc.musicVol", def: 0.6, vol: true, apply: (v) => {
@@ -56,15 +71,17 @@ function defineSettings() {
       for (const btn of stepper.querySelectorAll(".step-btn")) btn.style.color = color;
     }
   } });
-  defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_LAYOUTS.length - 1, apply: (v) => {
-    el.mapVal.textContent = ARENA_NAMES[v];                // mostra o NOME do mapa
+  defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_NAMES.length - 1, apply: (v) => {
+    el.mapVal.textContent = ARENA_NAMES[v];                // nome do mapa
     el.mapAux.textContent = "";
-    state.arenaLayout = ARENA_LAYOUTS[v];                  // aplica a escolha já
-    if (!app.running && state.roster.length) {            // preview ao vivo no fundo do menu
-      resetRound();
-      renderer.updateCamera(state, 0);
-      renderer.render(state);
-    }
+    applyArenaConfig();                                    // layout depende do mapa + tamanho
+    previewArena();
+  } });
+  defineSetting("arenaSize", { ls: "lc.arenaSize", def: 1, min: 0, max: ARENA_SIZES.length - 1, apply: (v) => {
+    el.sizeVal.textContent = ARENA_SIZE_NAMES[v];
+    el.sizeAux.textContent = ARENA_SIZES[v] + "²";         // ex.: 180²
+    applyArenaConfig();                                    // muda COLS/ROWS e recompõe os obstáculos
+    previewArena();
   } });
   defineSetting("gfx", { ls: "lc.gfx", def: 0, min: 0, max: 2, apply: (v) => {
     el.gfxVal.textContent = GFX_NAMES[v];
@@ -240,7 +257,7 @@ async function startMatch(mode) {
   state.ares = Math.random() < chance;     // sorteia o modo ARES
   aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera só após a 1ª morte)
   configureRoster(mode);                   // ARES força 1 CPU
-  state.arenaLayout = ARENA_LAYOUTS[settings.map];   // mapa escolhido em Opções > Mapas (default Vazio)
+  applyArenaConfig();                      // tamanho + mapa escolhidos em Opções > Mapas
   showOnly(null);
   resetRound();
   app.paused = false;
@@ -372,6 +389,7 @@ function buildNav() {
   ]);
   registerMenu(el.mapsMenu, [
     navStepper(el.mapVal.closest(".stepper"), () => stepSetting("map", -1), () => stepSetting("map", 1)),
+    navStepper(el.sizeVal.closest(".stepper"), () => stepSetting("arenaSize", -1), () => stepSetting("arenaSize", 1)),
     navBtn("btn-maps-back"),
   ]);
   registerMenu(el.graphicsMenu, [
@@ -396,6 +414,8 @@ function wireControls() {
   document.getElementById("btn-maps-back").addEventListener("click", backToOptions);
   document.getElementById("map-dec").addEventListener("click", () => stepSetting("map", -1));
   document.getElementById("map-inc").addEventListener("click", () => stepSetting("map", 1));
+  document.getElementById("size-dec").addEventListener("click", () => stepSetting("arenaSize", -1));
+  document.getElementById("size-inc").addEventListener("click", () => stepSetting("arenaSize", 1));
   document.getElementById("btn-graphics").addEventListener("click", openGraphics);
   document.getElementById("btn-graphics-back").addEventListener("click", backToOptions);
   document.getElementById("gfx-dec").addEventListener("click", () => stepSetting("gfx", -1));

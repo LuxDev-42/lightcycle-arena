@@ -11,19 +11,22 @@
 // (A IA antiga gulosa/flood-fill foi removida; está no histórico do git se precisar.)
 import { DIRS, OPPOSITE, COLS, ROWS, isFree, clamp } from "./config.js";
 
-const N = COLS * ROWS;
 // Buffers reaproveitados entre chamadas (sem alocar/zerar a cada decisão): um
 // "carimbo" de geração (_gen) marca o que foi visitado NESTA chamada da BFS, e
-// _q é a fila (em vez de um array que cresce com push).
-const _gen = new Int32Array(N);
-const _owner = new Uint8Array(N);     // 1 = bot · 2 = oponente · 3 = contestada (empate de distância)
-const _dist = new Int32Array(N);
-const _q = new Int32Array(N);
-let _curGen = 0;
+// _q é a fila. LAZY: realocam quando o tamanho da arena (COLS*ROWS) muda.
+let _N = 0, _gen, _owner, _dist, _q, _curGen = 0;
+function ensureBuffers() {
+  const n = COLS * ROWS;
+  if (n === _N) return;
+  _N = n;
+  _gen = new Int32Array(n);
+  _owner = new Uint8Array(n);   // 1 = bot · 2 = oponente · 3 = contestada (empate de distância)
+  _dist = new Int32Array(n);
+  _q = new Int32Array(n);
+  _curGen = 0;
+}
 
 const ALL_DIRS = Object.keys(DIRS);   // ["up","down","left","right"] — calculado uma vez só
-
-const VORONOI_CAP = N;      // sem teto artificial: varre a regiao conexa inteira (mine/reachable corretos; a BFS e barata)
 const MIN_SAFE_SPACE = 16;  // abaixo disso o movimento se enforca → forte penalidade
 const TURN_PENALTY = 90;    // custo de VIRAR (perde velocidade na curva) — ↑ anda mais reto/rápido, menos loops
 const CHASE_BONUS = 130;    // bônus por se APROXIMAR do oponente mais próximo (× violência) — ↑ mais caçador
@@ -55,7 +58,7 @@ function voronoi(grid, myX, myY, oppHeads) {
   }
 
   let mine = 0, theirs = 0, connected = false;
-  for (let head = 0; head < tail && head < VORONOI_CAP; head++) {
+  for (let head = 0; head < tail; head++) {   // tail <= n (cada célula entra uma vez)
     k = _q[head];
     const owner = _owner[k];
     if (owner === 1) mine++; else if (owner === 2) theirs++;   // 3 (contestada) não conta
@@ -109,6 +112,7 @@ function worstCaseAdvantage(grid, botId, mx, my, opp, otherHeads, violence) {
 // Decide a próxima direção do `bot`. Retorna a string da direção, ou null se não
 // houver saída (aí o chamador mantém a direção atual).
 export function chooseDirection(bot, players, grid, violence = 0.2) {
+  ensureBuffers();   // realoca os buffers da BFS se o tamanho da arena mudou
   // (1) PREVISÃO: o oponente não dá ré, então o passo provável é seguir reto.
   // Semeia a célula À FRENTE dele (se livre) em vez da atual → a IA "lê" o adversário
   // e mira onde ele VAI estar (melhor interceptação/corte).
