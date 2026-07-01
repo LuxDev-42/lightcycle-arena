@@ -109,6 +109,7 @@ export const MUSIC_TRACKS = [                            // trilha normal (arqui
 ];
 export const MUSIC_DANGER_TRACKS = [                     // trilha do ARES (arquivos em music/dangerMusic/)
   "Nine Inch Nails - Target Identified Official Visualizer.mp3",
+  "Nine Inch Nails - Infiltrator Official Visualizer.mp3",
 ];
 
 export function clamp(value, lo, hi) { return value < lo ? lo : (value > hi ? hi : value); }
