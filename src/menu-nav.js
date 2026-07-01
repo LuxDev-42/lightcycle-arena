@@ -6,7 +6,7 @@ import { audio } from "./engines.js";
 
 const overlays = [];          // todos os overlays registrados (alvos do showOnly)
 const configs = new Map();    // overlayEl -> [navItem]
-let items = null, index = 0;
+let items = null, index = 0, current = null;
 
 // ---- Fábricas de item de navegação ----
 export function navBtn(id) {
@@ -62,7 +62,13 @@ export function showOnly(target) {
   for (const ov of overlays) ov.classList.toggle("hidden", ov !== target);
   if (items && items[index]) items[index].el.classList.remove("nav-focus");
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  items = target ? (configs.get(target) || null) : null;
+  current = target;
+  const cfg = target ? configs.get(target) : null;
+  // só navega itens VISÍVEIS — descarta os escondidos (ex.: opções debug-only com o debug off)
+  items = cfg ? cfg.filter((it) => getComputedStyle(it.el).display !== "none") : null;
   index = 0;
   if (items && items.length) items[0].el.classList.add("nav-focus");
 }
+
+// Re-filtra o menu atual (ex.: ao ligar/desligar o debug, que revela itens debug-only).
+export function refreshNav() { if (current) showOnly(current); }

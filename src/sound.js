@@ -34,6 +34,14 @@ export const SOUND = {
     boomVibHz: 16,                    // vibrato do boom (Hz) — wobble grave; MENOR = onda mais longa
     boomVibCents: 400,               // profundidade do vibrato (cents) — o quanto o tom oscila
   },
+
+  derez: {                     // sumiço da trilha (de-rez): shimmer agudo descendo + faísca subindo
+    from: 102, to: 16,       // varredura do tom (Hz): grave, mas audível (a serra sustenta com os harmônicos)
+    dur: 2, level: 0.46,    // duração (s) e volume do shimmer
+    detune: 60,               // 2ª voz destoada (cents) p/ brilho/coro cristalino
+    vibHz: 64, vibCents: 10,  // vibrato (igual ao boom da explosão): LFO no detune das vozes
+    sparkFrom: 100, sparkTo: 6000, sparkLevel: 0.3, sparkDur: 0.5,   // faísca: passa-alta ABRINDO (oposto da explosão) — baixa p/ não mascarar o tom
+  },
 };
 
 export class AudioEngine {
@@ -197,6 +205,46 @@ export class AudioEngine {
     boom.connect(bGain); bGain.connect(panner);
     boom.start(t); boom.stop(t + X.boomDur + 0.05);
     vib.start(t); vib.stop(t + X.boomDur + 0.05);
+  }
+
+  // ---- De-rez da trilha (sumiço) — distinto da explosão: shimmer agudo + faísca ----
+  trailDerez(pan = 0) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, D = SOUND.derez;
+    const panner = ctx.createStereoPanner(); panner.pan.value = clamp(pan, -1, 1);
+    panner.connect(this.master);
+
+    // vibrato compartilhado (igual ao boom da explosão): LFO senoidal somado ao detune das vozes
+    const vib = ctx.createOscillator(); vib.type = "sine"; vib.frequency.value = D.vibHz;
+    const vibGain = ctx.createGain(); vibGain.gain.value = D.vibCents;
+    vib.connect(vibGain);
+    vib.start(t); vib.stop(t + D.dur + 0.05);
+
+    // shimmer descendente (2 vozes triangulares destoadas) — som cristalino/digital
+    for (const det of [0, D.detune]) {
+      const osc = ctx.createOscillator(); osc.type = "sawtooth"; osc.detune.value = det;   // corta melhor que triangle
+      vibGain.connect(osc.detune);   // soma o vibrato ao detune estático desta voz
+      osc.frequency.setValueAtTime(D.from, t);
+      osc.frequency.exponentialRampToValueAtTime(D.to, t + D.dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(D.level, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + D.dur + 0.02);
+      osc.connect(g); g.connect(panner);
+      osc.start(t); osc.stop(t + D.dur + 0.05);
+    }
+
+    // faísca: ruído com passa-ALTA abrindo pra cima (dissipa em agudos) — oposto da explosão
+    const noise = ctx.createBufferSource(); noise.buffer = this.noiseBuffer;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.Q.value = 0.7;
+    hp.frequency.setValueAtTime(D.sparkFrom, t);
+    hp.frequency.exponentialRampToValueAtTime(D.sparkTo, t + D.sparkDur);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(D.sparkLevel, t + 0.02);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + D.sparkDur + 0.02);
+    noise.connect(hp); hp.connect(ng); ng.connect(panner);
+    noise.start(t); noise.stop(t + D.sparkDur + 0.05);
   }
 
   // ---- Bips / jingles (16-bit) ----

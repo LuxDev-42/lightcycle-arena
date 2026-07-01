@@ -5,7 +5,7 @@ import { state } from "./state.js";
 import { app } from "./app.js";
 import { audio, renderer, music } from "./engines.js";
 import { DIRS, OPPOSITE } from "./config.js";
-import { moveNav, navHorizontal, activateNav, isNavActive } from "./menu-nav.js";
+import { moveNav, navHorizontal, activateNav, isNavActive, refreshNav } from "./menu-nav.js";
 
 const KEYMAP = {
   "w": [1, "up"], "a": [1, "left"], "s": [1, "down"], "d": [1, "right"],
@@ -42,7 +42,13 @@ function onKeyDown(event) {
   heldKeys.add(key);
   if (event.ctrlKey && (key === "d" || key === "b")) {        // chord Ctrl+D+B → liga/desliga debug
     event.preventDefault();
-    if (heldKeys.has("d") && heldKeys.has("b")) { app.debug = !app.debug; renderer.setDebug(app.debug); renderer.render(state); }
+    if (heldKeys.has("d") && heldKeys.has("b")) {
+      app.debug = !app.debug;
+      renderer.setDebug(app.debug);
+      document.body.classList.toggle("debug", app.debug);   // mostra/esconde opções debug-only no menu
+      refreshNav();                                          // re-filtra a nav (entra/sai o item debug-only)
+      renderer.render(state);
+    }
     return;                                                   // não trata Ctrl+D/Ctrl+B como input de jogo
   }
   if (key === "m") { audio.toggleMute(); return; }

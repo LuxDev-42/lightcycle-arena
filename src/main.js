@@ -110,6 +110,7 @@ function configureRoster(mode) {
 }
 
 let prevAlive = [];
+let prevTrailGone = [];   // p/ disparar o som de de-rez quando a trilha some
 function resetRound() {
   applyColors();
   state.grid = createGrid();
@@ -124,6 +125,7 @@ function resetRound() {
   for (const player of state.players) state.grid[idx(player.x, player.y)] = player.id;
   clearSpawnRunways(state.grid, state.players);           // abre pista segura à frente de cada spawn
   prevAlive = state.players.map(() => true);
+  prevTrailGone = state.players.map(() => false);
   state.roundWinner = null;
   state.dyingTimer = 0;
   renderer.snapToTarget();
@@ -207,13 +209,16 @@ function frame(timestamp) {
     } else if (state.phase === "playing" || state.phase === "dying") {
       if (advance(state, dt)) renderScoreboard();   // round terminou → placar
       for (let i = 0; i < state.players.length; i++) {
-        if (prevAlive[i] && !state.players[i].alive) {
-          audio.explosion(renderer.screenPan(state.players[i]));
+        const p = state.players[i];
+        if (prevAlive[i] && !p.alive) {
+          audio.explosion(renderer.screenPan(p));
           renderer.addShake(SHAKE_DEATH);              // tremor de tela na morte
           renderer.addFlash(0.22, "#ffffff");
           if (state.ares) aresEscAllowed = true;       // 1ª morte no ARES → libera o Esc de saída
         }
-        prevAlive[i] = state.players[i].alive;
+        if (!prevTrailGone[i] && p.trailGone) audio.trailDerez(renderer.screenPan(p));   // som do de-rez ao sumir a trilha
+        prevAlive[i] = p.alive;
+        prevTrailGone[i] = p.trailGone;
       }
       // juice do jogador HUMANO: tique de passo (feel de velocidade) + vinheta de quase-acidente
       nearMissCd -= dt; stepTickCd -= dt;
@@ -302,6 +307,7 @@ function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
 function openMaps()        { showOnly(el.mapsMenu); }
 function openGraphics()    { showOnly(el.graphicsMenu); }
+function openSounds()      { showOnly(el.soundsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
@@ -352,7 +358,8 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
   || !el.audioMenu.classList.contains("hidden")
   || !el.advMenu.classList.contains("hidden")
   || !el.mapsMenu.classList.contains("hidden")
-  || !el.graphicsMenu.classList.contains("hidden");
+  || !el.graphicsMenu.classList.contains("hidden")
+  || !el.soundsMenu.classList.contains("hidden");
 
 function handleEscape() {
   if (state.phase === "menu") {
@@ -376,9 +383,38 @@ function showTouchControls() {
 function hideTouchControls() { el.touchControls.classList.remove("active"); }
 
 // ---- Registro de menus (cada um: overlay + itens navegáveis) ----
+// Botões de teste de SFX (submenu Sons, debug) — gerados a partir da lista de sons da engine.
+const soundTestNav = [];
+function buildSoundTests() {
+  const tests = [
+    ["de-rez (trilha)", () => audio.trailDerez()],
+    ["explosão", () => audio.explosion()],
+    ["near-miss", () => audio.nearMiss()],
+    ["move tick", () => audio.moveTick()],
+    ["erro", () => audio.error()],
+    ["contagem 3-2-1", () => audio.tick(false)],
+    ["contagem GO", () => audio.tick(true)],
+    ["vitória", () => audio.victory()],
+    ["empate", () => audio.draw()],
+    ["ARES stinger", () => audio.aresStinger()],
+    ["blip (início)", () => audio.blip()],
+    ["UI mover", () => audio.uiMove()],
+    ["UI selecionar", () => audio.uiSelect()],
+    ["UI voltar", () => audio.uiBack()],
+  ];
+  for (const [label, play] of tests) {
+    const b = document.createElement("button");
+    b.className = "neutral snd-test";
+    b.textContent = label;
+    b.addEventListener("click", () => { audio.resume(); play(); });
+    el.soundList.appendChild(b);
+    soundTestNav.push({ el: b, type: "button", run: () => b.click() });
+  }
+}
+
 function buildNav() {
   registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options")]);
-  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-options-back")]);
+  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-options-back")]);
   registerMenu(el.colorsMenu, [navSlider(el.hue1, 8), navSlider(el.hue2, 8), navBtn("btn-colors-back")]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
   registerMenu(el.advMenu, [
@@ -396,6 +432,7 @@ function buildNav() {
     navStepper(el.gfxVal.closest(".stepper"), () => stepSetting("gfx", -1), () => stepSetting("gfx", 1)),
     navBtn("btn-graphics-back"),
   ]);
+  registerMenu(el.soundsMenu, [...soundTestNav, navBtn("btn-sounds-back")]);
   registerMenu(el.result, [navBtn("btn-again"), navBtn("btn-menu")]);
   bindHover();
 }
@@ -427,6 +464,8 @@ function wireControls() {
   document.getElementById("btn-audio-back").addEventListener("click", backToOptions);
   document.getElementById("btn-again").addEventListener("click", again);
   document.getElementById("btn-menu").addEventListener("click", goMenu);
+  document.getElementById("btn-sounds").addEventListener("click", openSounds);
+  document.getElementById("btn-sounds-back").addEventListener("click", backToOptions);
 
   document.getElementById("sp-dec").addEventListener("click", () => stepSetting("spCpus", -1));
   document.getElementById("sp-inc").addEventListener("click", () => stepSetting("spCpus", 1));
@@ -447,6 +486,7 @@ function wireControls() {
     const btn = e.target.closest("button");
     if (!btn) return;
     audio.resume();
+    if (btn.classList.contains("snd-test")) return;          // botões de teste de som já tocam o próprio som (sem bip de UI por cima)
     if (btn.classList.contains("step-btn")) audio.uiMove();   // −/+ dos steppers = ajuste
     else if (btn.id.endsWith("-back")) audio.uiBack();        // botões "Voltar" = som grave
     else audio.uiSelect();                                    // demais botões = selecionar
@@ -463,6 +503,7 @@ resetRound();
 renderer.updateCamera(state, 0);
 state.phase = "menu";
 app.running = false;
+buildSoundTests();
 buildNav();
 wireControls();
 initInput({ onEscape: handleEscape });

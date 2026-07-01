@@ -15,6 +15,8 @@ export const el = {
   advMenu: $("adversaries-menu"),
   mapsMenu: $("maps-menu"),
   graphicsMenu: $("graphics-menu"),
+  soundsMenu: $("sounds-menu"),
+  soundList: $("sound-list"),
   result: $("result"),
   touchControls: $("touch-controls"),
 

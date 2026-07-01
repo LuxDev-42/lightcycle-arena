@@ -1,6 +1,6 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_WHITEOUT_MS, clamp } from "./config.js";
 import { drawDebug } from "./debug-overlay.js";
 
 // Suavização criticamente amortecida (SmoothDamp, à la Unity): persegue `target`
@@ -311,6 +311,16 @@ export class Renderer {
     const ctx = this.ctx;
     const trail = player.trail;
     const len = trail.length;
+    // No clarão (whiteout) a cor TRANSICIONA da cor da moto até o branco (não troca seco):
+    // dessatura (100%→0%) e clareia (60%→100%) em HSL conforme o whiteTimer corre.
+    const white = !player.alive && player.whiteTimer > 0;
+    let coreColor = player.color, glowColor = player.glow, glowAlpha = 0.45;
+    if (white) {
+      const wp = clamp(1 - player.whiteTimer / TRAIL_WHITEOUT_MS, 0, 1);   // 0 → 1 ao longo do clarão
+      coreColor = `hsl(${player.hue}, ${100 * (1 - wp)}%, ${60 + 40 * wp}%)`;
+      glowColor = coreColor;
+      glowAlpha = 0.45 + 0.35 * wp;   // glow intensifica conforme branqueia
+    }
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -328,17 +338,17 @@ export class Renderer {
       ctx.lineTo(headX, headY);
     }
 
-    // glow externo (sem shadow, barato) — pulado no lowFx p/ não dobrar o custo do rastro
-    if (!this.lowFx) {
-      ctx.globalAlpha = 0.45;
-      ctx.strokeStyle = player.glow;
+    // glow externo (sem shadow, barato) — pulado no lowFx; no clarão sempre desenha
+    if (!this.lowFx || white) {
+      ctx.globalAlpha = glowAlpha;
+      ctx.strokeStyle = glowColor;
       ctx.lineWidth = CELL * 1.35;
       ctx.stroke();
     }
 
     // núcleo
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = player.color;
+    ctx.strokeStyle = coreColor;
     ctx.lineWidth = CELL - 2;
     ctx.stroke();
     ctx.restore();
@@ -402,7 +412,7 @@ export class Renderer {
 
     this.drawArena(state.ares);
     this.drawObstacles(state);
-    if (state.players) for (const player of state.players) this.drawTrail(player);
+    if (state.players) for (const player of state.players) if (player.alive || !player.trailGone) this.drawTrail(player);   // trilha persiste ~2s após a morte, depois some
     this.drawParticles(state.particles);
     if (this.debug) drawDebug(this, state);
 
