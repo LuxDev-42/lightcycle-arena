@@ -102,9 +102,10 @@ export const MUSIC_DIR = "music/";
 export const MUSIC_DANGER_DIR = "music/dangerMusic/";   // trilha do modo ARES
 export const MUSIC_EXTS = [".mp3", ".ogg", ".wav", ".m4a", ".aac", ".opus", ".flac"];
 export const MUSIC_TRACKS = [                            // trilha normal (arquivos em music/)
-  "Nine Inch Nails - Building Better Worlds Official Visualizer.mp3",
   "Nine Inch Nails - I Know You Can Feel It Working Mens Club Remix.mp3",
   "TRON Legacy - The Son of Flynn Synth Cover.mp3",
+  "The Game Has Changed.mp3",
+  "Nine Inch Nails - I Know You Can Feel It Working Mens Club Remix.mp3"
 ];
 export const MUSIC_DANGER_TRACKS = [                     // trilha do ARES (arquivos em music/dangerMusic/)
   "Nine Inch Nails - Target Identified Official Visualizer.mp3",
