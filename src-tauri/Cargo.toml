@@ -1,0 +1,17 @@
+[package]
+name = "lightcycle-arena"
+version = "1.0.0"
+description = "Lightcycle Arena"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# Binário menor no release (opcional; pode remover se atrapalhar o build).
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
