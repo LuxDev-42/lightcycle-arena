@@ -99,18 +99,18 @@ export const OPPOSITE = { up: "down", down: "up", left: "right", right: "left" }
 // pastas; os caminhos/encode são montados no music.js. Se uma lista ficar vazia,
 // o music.js cai na varredura automática do diretório (precisa de listagem HTTP).
 export const MUSIC_DIR = "music/";
-export const MENU_TRACK = "Solar Sailer.mp3";           // tema do menu/intro (toca em loop)
+export const MENU_TRACK = "solar-sailer.mp3";           // tema do menu/intro (toca em loop; nome URL-safe p/ o webview)
 export const MUSIC_DANGER_DIR = "music/dangerMusic/";   // trilha do modo ARES
 export const MUSIC_EXTS = [".mp3", ".ogg", ".wav", ".m4a", ".aac", ".opus", ".flac"];
-export const MUSIC_TRACKS = [                            // trilha normal (arquivos em music/)
-  "Nine Inch Nails - I Know You Can Feel It Working Mens Club Remix.mp3",
-  "TRON Legacy - The Son of Flynn Synth Cover.mp3",
-  "The Game Has Changed.mp3",
-  "Nine Inch Nails - I Know You Can Feel It Working Mens Club Remix.mp3"
+export const MUSIC_TRACKS = [                            // trilha normal (arquivos em music/; nomes URL-safe p/ o webview)
+  "nin-mens-club-remix.mp3",
+  "son-of-flynn.mp3",
+  "the-game-has-changed.mp3",
+  "nin-mens-club-remix.mp3"
 ];
 export const MUSIC_DANGER_TRACKS = [                     // trilha do ARES (arquivos em music/dangerMusic/)
-  "Nine Inch Nails - Target Identified Official Visualizer.mp3",
-  "Nine Inch Nails - Infiltrator Official Visualizer.mp3",
+  "nin-target-identified.mp3",
+  "nin-infiltrator.mp3",
 ];
 
 export function clamp(value, lo, hi) { return value < lo ? lo : (value > hi ? hi : value); }

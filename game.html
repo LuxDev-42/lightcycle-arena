@@ -250,7 +250,7 @@
   /* ---- Intro (abertura) ---- */
   #intro {
     position: fixed; inset: 0; z-index: 90;
-    display: grid; place-items: center;
+    display: grid; place-items: center; grid-template: 1fr / 1fr;   /* célula única em tela cheia: centraliza igual em todo engine (WebKitGTK ancorava a coluna auto à esquerda) */
     background: #03060c; transition: opacity .6s ease;
   }
   #intro.hidden { display: none; }
