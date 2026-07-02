@@ -52,6 +52,7 @@ export const el = {
   sizeAux: $("size-aux"),
   gfxVal: $("gfx-val"),
   gfxAux: $("gfx-aux"),
+  btnFullscreen: $("btn-fullscreen"),
 
   // Intro do ARES + contagem
   aresIntro: $("ares-intro"),

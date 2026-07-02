@@ -319,6 +319,22 @@ function openSounds()      { showOnly(el.soundsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
+// ---- Tela cheia (toggle no menu de gráficos) ----
+// Fullscreen API padrão (funciona no browser e no webview do Tauri); requer gesto
+// do usuário — o clique no botão já é o gesto. O rótulo segue o estado real.
+function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
+function toggleFullscreen() {
+  if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
+  const r = document.documentElement;
+  const p = (r.requestFullscreen || r.webkitRequestFullscreen)?.call(r);
+  if (p && p.catch) p.catch(() => {});
+}
+function syncFullscreenLabel() {
+  const on = !!fsElement();
+  el.btnFullscreen.classList.toggle("on", on);       // bolinha p/ a direita quando ligado
+  el.btnFullscreen.setAttribute("aria-checked", on ? "true" : "false");
+}
+
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
 function endRound() {
   const champ = state.players.find(p => state.scores[p.id - 1] >= WIN_SCORE);
@@ -440,6 +456,7 @@ function buildNav() {
   ]);
   registerMenu(el.graphicsMenu, [
     navStepper(el.gfxVal.closest(".stepper"), () => stepSetting("gfx", -1), () => stepSetting("gfx", 1)),
+    navBtn("btn-fullscreen"),
     navBtn("btn-graphics-back"),
   ]);
   registerMenu(el.soundsMenu, [...soundTestNav, navBtn("btn-sounds-back")]);
@@ -467,6 +484,10 @@ function wireControls() {
   document.getElementById("btn-graphics-back").addEventListener("click", backToOptions);
   document.getElementById("gfx-dec").addEventListener("click", () => stepSetting("gfx", -1));
   document.getElementById("gfx-inc").addEventListener("click", () => stepSetting("gfx", 1));
+  el.btnFullscreen.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", syncFullscreenLabel);
+  document.addEventListener("webkitfullscreenchange", syncFullscreenLabel);
+  syncFullscreenLabel();
   document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
   document.getElementById("btn-colors").addEventListener("click", openColors);
   document.getElementById("btn-colors-back").addEventListener("click", backToOptions);

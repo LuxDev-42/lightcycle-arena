@@ -181,6 +181,20 @@
     outline: 2px solid #bff4ff; outline-offset: 7px;
     box-shadow: 0 0 18px rgba(191,244,255,.45);
   }
+  /* switch (toggle) — ex.: tela cheia. Trilho ~2x a bolinha; posição da bolinha = estado. */
+  .switch {
+    position: relative; width: 52px; height: 28px; padding: 0;
+    border-radius: 999px; border: 1px solid rgba(25,224,255,.4);
+    background: rgba(25,224,255,.08); cursor: pointer;
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .switch-knob {
+    position: absolute; top: 50%; left: 3px; transform: translateY(-50%);
+    width: 20px; height: 20px; border-radius: 50%; background: #6fa8bd;
+    transition: left .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+  .switch.on { background: rgba(25,224,255,.25); border-color: var(--cyan); }
+  .switch.on .switch-knob { left: 27px; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
 
   /* ---- Modo ARES / contagem / fade ---- */
   #ares-intro {
@@ -259,13 +273,15 @@
   #intro-credit {
     font-family: var(--font-display); font-weight: 700;
     font-size: clamp(18px, 3vw, 34px); letter-spacing: .14em; text-transform: uppercase;
+    text-align: center;
     color: #9fd4e6; opacity: 0; transition: opacity .9s ease;
   }
   #intro-credit b { color: #fff; font-weight: 800; text-shadow: 0 0 14px rgba(255,255,255,.5); }
   #intro-credit.show { opacity: 1; }
   #intro-title {
     font-family: var(--font-display); font-weight: 800;
-    font-size: clamp(48px, 12vw, 130px); letter-spacing: .1em; text-transform: uppercase;
+    font-size: clamp(40px, 7vw, 120px); letter-spacing: .12em; text-transform: uppercase;  /* letter-spacing igual ao .overlay h2 → o voo pousa no mesmo tamanho */
+    white-space: nowrap; text-align: center;    /* uma linha (igual ao menu) e centralizado — cabe na largura da janela em qualquer engine */
     text-shadow: 0 0 16px currentColor;
     opacity: 0; transition: opacity .7s ease;   /* o transform (voo) é setado inline no JS */
     will-change: transform, opacity;
@@ -547,6 +563,10 @@
           <button class="step-btn" id="gfx-inc">+</button>
           <span class="adv-aux" id="gfx-aux"></span>
         </div>
+      </div>
+      <div class="adv-ctl">
+        <span class="adv-label">Tela cheia</span>
+        <button id="btn-fullscreen" class="switch" role="switch" aria-checked="false" aria-label="Tela cheia"><span class="switch-knob"></span></button>
       </div>
     </div>
     <div class="btns">
