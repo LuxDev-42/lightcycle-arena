@@ -216,7 +216,7 @@ function frame(timestamp) {
           renderer.addFlash(0.22, "#ffffff");
           if (state.ares) aresEscAllowed = true;       // 1ª morte no ARES → libera o Esc de saída
         }
-        if (!prevTrailGone[i] && p.trailGone) audio.trailDerez(renderer.screenPan(p));   // som do de-rez ao sumir a trilha
+        if (!prevTrailGone[i] && p.trailGone) audio.explosion(renderer.screenPan(p));   // corte abrupto da trilha: som de explosão padrão
         prevAlive[i] = p.alive;
         prevTrailGone[i] = p.trailGone;
       }

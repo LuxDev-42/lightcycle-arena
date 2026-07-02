@@ -11,6 +11,7 @@ const ENGINE_SMOOTH = 0.03;   // suavização (s) da mudança de tom — baixa p
 // =====================================================================
 export const SOUND = {
   masterVolume: 0.6,            // volume padrão dos SFX (0..1) — o slider/localStorage sobrescreve
+  pitchVarCents: 10,            // variância aleatória de afinação por oscilador (±cents) — bem sutil, aplicada no root
 
   engine: {                    // motor de cada moto (voz contínua)
     baseFreqs: [60, 20],       // tom-base de cada motor (Hz) — distintos p/ diferenciar P1/P2
@@ -62,6 +63,15 @@ export class AudioEngine {
     if (!Ctx) return;
     const ctx = new Ctx();
     this.ctx = ctx;
+
+    // Variância de afinação no ROOT: cada oscilador nasce com um detune aleatório
+    // sutil (±pitchVarCents). Afeta TODOS os sons — todos passam por createOscillator.
+    const rawCreateOsc = ctx.createOscillator.bind(ctx);
+    ctx.createOscillator = () => {
+      const osc = rawCreateOsc();
+      osc.detune.value = (Math.random() * 2 - 1) * SOUND.pitchVarCents;
+      return osc;
+    };
 
     // master → limitador → saída
     this.master = ctx.createGain();
@@ -222,7 +232,7 @@ export class AudioEngine {
 
     // shimmer descendente (2 vozes triangulares destoadas) — som cristalino/digital
     for (const det of [0, D.detune]) {
-      const osc = ctx.createOscillator(); osc.type = "sawtooth"; osc.detune.value = det;   // corta melhor que triangle
+      const osc = ctx.createOscillator(); osc.type = "sawtooth"; osc.detune.value += det;   // += preserva a variância do root; sawtooth corta melhor
       vibGain.connect(osc.detune);   // soma o vibrato ao detune estático desta voz
       osc.frequency.setValueAtTime(D.from, t);
       osc.frequency.exponentialRampToValueAtTime(D.to, t + D.dur);

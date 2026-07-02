@@ -5,7 +5,7 @@
 // Opera sobre um objeto `state` (criado e mantido pelo main.js).
 import {
   CELL, COLS, ROWS, DIRS, OPPOSITE, BASE_TICK, MIN_TICK, MAX_TICK, SPEEDUP, TURN_SPEED_KEEP,
-  VICTORY_MS, TRAIL_LINGER_MS, TRAIL_WHITEOUT_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
+  VICTORY_MS, TRAIL_LINGER_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
 } from "./config.js";
 import { chooseDirection } from "./ai.js";
 
@@ -54,8 +54,7 @@ export function makePlayer(id, startCol, startRow, dir, isAI, skin, label) {
     tickMs: BASE_TICK,  // intervalo entre passos desta moto (menor = mais rápido)
     acc: 0,             // acumulador de tempo desta moto (ms)
     progress: 0,        // 0..1: progresso visual entre um passo e o próximo
-    fadeTimer: 0,       // (morto) ms restantes até começar o clarão
-    whiteTimer: 0,      // (morto) ms restantes do clarão branco
+    fadeTimer: 0,       // (morto) ms restantes do whiten (morte → corte); 0 = viva ou já sumiu
     trailGone: false,   // (morto) trilha já apagada da grade?
   };
 }
@@ -184,20 +183,16 @@ export function advance(state, dt) {
     if (player.alive) player.progress = Math.min(1, player.acc / player.tickMs);
   }
 
-  // Trilha do morto: persiste (TRAIL_LINGER_MS) → clarão branco (TRAIL_WHITEOUT_MS) →
-  // explode em partículas e some (libera a grade).
+  // Trilha do morto: whiten suave (ease-in no desenho) por TRAIL_LINGER_MS a partir da
+  // morte e, no fim, CORTE ABRUPTO — explode em partículas e some (libera a grade).
+  // O som (explosão padrão) é disparado no main.js ao detectar o corte (trailGone).
   for (const player of state.players) {
     if (player.alive || player.trailGone) continue;
-    if (player.fadeTimer > 0) {
-      player.fadeTimer -= dt;
-      if (player.fadeTimer <= 0) player.whiteTimer = TRAIL_WHITEOUT_MS;   // entra no clarão
-    } else if (player.whiteTimer > 0) {
-      player.whiteTimer -= dt;
-      if (player.whiteTimer <= 0) {                                       // some: explode + libera a grade
-        spawnTrailBurst(state.particles, player);
-        for (const c of player.trail) state.grid[idx(c.x, c.y)] = 0;
-        player.trailGone = true;
-      }
+    player.fadeTimer -= dt;
+    if (player.fadeTimer <= 0) {
+      spawnTrailBurst(state.particles, player);
+      for (const c of player.trail) state.grid[idx(c.x, c.y)] = 0;
+      player.trailGone = true;
     }
   }
 

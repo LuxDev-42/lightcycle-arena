@@ -1,6 +1,6 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_WHITEOUT_MS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_LINGER_MS, clamp } from "./config.js";
 import { drawDebug } from "./debug-overlay.js";
 
 // Suavização criticamente amortecida (SmoothDamp, à la Unity): persegue `target`
@@ -312,11 +312,12 @@ export class Renderer {
     const trail = player.trail;
     const len = trail.length;
     // No clarão (whiteout) a cor TRANSICIONA da cor da moto até o branco (não troca seco):
-    // dessatura (100%→0%) e clareia (60%→100%) em HSL conforme o whiteTimer corre.
-    const white = !player.alive && player.whiteTimer > 0;
+    // dessatura (100%→0%) e clareia (60%→100%) em HSL, com ease-in (smooth in) a partir da morte.
+    const white = !player.alive && player.fadeTimer > 0;
     let coreColor = player.color, glowColor = player.glow, glowAlpha = 0.45;
     if (white) {
-      const wp = clamp(1 - player.whiteTimer / TRAIL_WHITEOUT_MS, 0, 1);   // 0 → 1 ao longo do clarão
+      let wp = clamp(1 - player.fadeTimer / TRAIL_LINGER_MS, 0, 1);   // 0 (morte) → 1 (corte)
+      wp = wp * wp;                                                   // ease-in: "smooth in" a partir da morte
       coreColor = `hsl(${player.hue}, ${100 * (1 - wp)}%, ${60 + 40 * wp}%)`;
       glowColor = coreColor;
       glowAlpha = 0.45 + 0.35 * wp;   // glow intensifica conforme branqueia
