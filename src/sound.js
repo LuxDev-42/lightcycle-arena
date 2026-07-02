@@ -14,7 +14,7 @@ export const SOUND = {
   pitchVarCents: 10,            // variância aleatória de afinação por oscilador (±cents) — bem sutil, aplicada no root
 
   engine: {                    // motor de cada moto (voz contínua)
-    baseFreqs: [60, 20],       // tom-base de cada motor (Hz) — distintos p/ diferenciar P1/P2
+    baseFreqs: [98, 73],       // tom-base de cada motor (Hz) — G2/D2, zumbido serra estilo Tron clássico (P1/P2 distintos)
     sawType: "sawtooth",       // oscilador principal
     subType: "square",         // sub-oscilador (corpo)
     subRatio: 0.5,             // frequência do sub = fundamental * isto
@@ -37,6 +37,7 @@ export const SOUND = {
   },
 
   derez: {                     // sumiço da trilha (de-rez): shimmer agudo descendo + faísca subindo
+    windupFrom: 165, windupTo: 659, windupLevel: 0.055,  // WINDUP: tom serra SUBINDO; começa 1s antes do pop (dura 1s)
     from: 102, to: 16,       // varredura do tom (Hz): grave, mas audível (a serra sustenta com os harmônicos)
     dur: 2, level: 0.46,    // duração (s) e volume do shimmer
     detune: 60,               // 2ª voz destoada (cents) p/ brilho/coro cristalino
@@ -101,7 +102,7 @@ export class AudioEngine {
   _freqForIndex(i) {
     const E = SOUND.engine;
     if (i < E.baseFreqs.length) return E.baseFreqs[i];
-    return 34 + ((i - E.baseFreqs.length) % 8) * 9;   // 34,43,52,… Hz
+    return 73 + ((i - E.baseFreqs.length) % 8) * 14;   // 73,87,101,… Hz (mesmo registro dos base)
   }
 
   // Garante pelo menos `n` vozes de motor (cria as que faltam; reaproveita).
@@ -255,6 +256,36 @@ export class AudioEngine {
     ng.gain.exponentialRampToValueAtTime(0.0001, t + D.sparkDur + 0.02);
     noise.connect(hp); hp.connect(ng); ng.connect(panner);
     noise.start(t); noise.stop(t + D.sparkDur + 0.05);
+  }
+
+  // ---- Windup do de-rez ---- toca na MORTE: tom serra SUBINDO por `durSec` (começa
+  // levemente grave, building até o corte). O pop (trailDerez) vem no fim, no corte.
+  derezWindup(pan = 0, durSec = 2) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, D = SOUND.derez, end = t + durSec;
+    const panner = ctx.createStereoPanner(); panner.pan.value = clamp(pan, -1, 1);
+    panner.connect(this.master);
+
+    // vibrato compartilhado com o de-rez (mesmo caráter)
+    const vib = ctx.createOscillator(); vib.type = "sine"; vib.frequency.value = D.vibHz;
+    const vibGain = ctx.createGain(); vibGain.gain.value = D.vibCents;
+    vib.connect(vibGain);
+    vib.start(t); vib.stop(end + 0.05);
+
+    // 2 vozes serra destoadas SUBINDO de tom, com crescendo (building)
+    for (const det of [0, D.detune]) {
+      const osc = ctx.createOscillator(); osc.type = "sawtooth"; osc.detune.value += det;
+      vibGain.connect(osc.detune);
+      osc.frequency.setValueAtTime(D.windupFrom, t);
+      osc.frequency.exponentialRampToValueAtTime(D.windupTo, end);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(D.windupLevel * 0.4, t + 0.2);   // entra
+      g.gain.exponentialRampToValueAtTime(D.windupLevel, end - 0.05);      // cresce até o corte
+      g.gain.exponentialRampToValueAtTime(0.0001, end);                    // corta sem clique (o pop assume)
+      osc.connect(g); g.connect(panner);
+      osc.start(t); osc.stop(end + 0.02);
+    }
   }
 
   // ---- Bips / jingles (16-bit) ----

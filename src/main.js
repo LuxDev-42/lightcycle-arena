@@ -5,7 +5,7 @@
 import {
   COLS, DIRS, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
-  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS,
+  SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
 } from "./config.js";
 import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
@@ -110,7 +110,8 @@ function configureRoster(mode) {
 }
 
 let prevAlive = [];
-let prevTrailGone = [];   // p/ disparar o som de de-rez quando a trilha some
+let prevTrailGone = [];   // p/ disparar o pop do de-rez quando a trilha some
+let windupFired = [];     // p/ disparar o windup uma vez, 1s antes do corte
 function resetRound() {
   applyColors();
   state.grid = createGrid();
@@ -126,6 +127,7 @@ function resetRound() {
   clearSpawnRunways(state.grid, state.players);           // abre pista segura à frente de cada spawn
   prevAlive = state.players.map(() => true);
   prevTrailGone = state.players.map(() => false);
+  windupFired = state.players.map(() => false);
   state.roundWinner = null;
   state.dyingTimer = 0;
   renderer.snapToTarget();
@@ -216,7 +218,12 @@ function frame(timestamp) {
           renderer.addFlash(0.22, "#ffffff");
           if (state.ares) aresEscAllowed = true;       // 1ª morte no ARES → libera o Esc de saída
         }
-        if (!prevTrailGone[i] && p.trailGone) audio.explosion(renderer.screenPan(p));   // corte abrupto da trilha: som de explosão padrão
+        // windup do de-rez: dispara quando falta TRAIL_WINDUP_MS pro corte (1s antes do pop)
+        if (!p.alive && !p.trailGone && !windupFired[i] && p.fadeTimer <= TRAIL_WINDUP_MS) {
+          audio.derezWindup(renderer.screenPan(p), TRAIL_WINDUP_MS / 1000);
+          windupFired[i] = true;
+        }
+        if (!prevTrailGone[i] && p.trailGone) audio.trailDerez(renderer.screenPan(p));   // corte: pop do de-rez (logo após o windup)
         prevAlive[i] = p.alive;
         prevTrailGone[i] = p.trailGone;
       }
@@ -387,7 +394,8 @@ function hideTouchControls() { el.touchControls.classList.remove("active"); }
 const soundTestNav = [];
 function buildSoundTests() {
   const tests = [
-    ["de-rez (trilha)", () => audio.trailDerez()],
+    ["de-rez windup", () => audio.derezWindup()],
+    ["de-rez pop", () => audio.trailDerez()],
     ["explosão", () => audio.explosion()],
     ["near-miss", () => audio.nearMiss()],
     ["move tick", () => audio.moveTick()],

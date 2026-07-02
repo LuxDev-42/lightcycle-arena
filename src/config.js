@@ -15,8 +15,9 @@ export const MIN_TICK = 42;           // intervalo mínimo = velocidade máxima
 export const MAX_TICK = 150;          // intervalo máximo = velocidade mínima (piso ao virar muito)
 export const SPEEDUP = 0.980;         // fator de aceleração por passo (mais perto de 1 = recupera devagar)
 export const TURN_SPEED_KEEP = 0.85;   // ao virar: mantém esta fração da velocidade atual (curvas seguidas acumulam)
-export const VICTORY_MS = 1000;// tempo até congelar e mostrar o painel
+export const VICTORY_MS = 3000;// tempo até congelar e mostrar o painel / ir pra próxima rodada
 export const TRAIL_LINGER_MS = 2000;// trilha de moto morta: whiten suave por isto (desde a morte) até o corte abrupto
+export const TRAIL_WINDUP_MS = 1000;// windup do de-rez (som): dura isto e começa a ESTE tempo antes do corte/pop
 export const MAX_ZOOM = 2.1;   // limite de aproximação quando estão pertinho
 
 export const WIN_SCORE = 5;      // melhor de 10: o primeiro a 5 vitórias leva a partida
