@@ -4,7 +4,7 @@
 // vazia, cai na varredura do diretório (precisa de listagem HTTP, p.ex. Live Server).
 //   music/            -> trilha normal
 //   music/dangerMusic -> trilha do modo ARES
-import { MUSIC_DIR, MUSIC_DANGER_DIR, MUSIC_EXTS, MUSIC_TRACKS, MUSIC_DANGER_TRACKS } from "./config.js";
+import { MUSIC_DIR, MENU_TRACK, MUSIC_DANGER_DIR, MUSIC_EXTS, MUSIC_TRACKS, MUSIC_DANGER_TRACKS } from "./config.js";
 
 function isAudio(href) {
   const h = href.toLowerCase();
@@ -40,6 +40,7 @@ export class MusicPlayer {
   constructor(audioEl) {
     this.el = audioEl;
     this.el.loop = false;                              // ao terminar, sorteia outra
+    this.menuTrack = toUrl(MUSIC_DIR, MENU_TRACK);     // tema fixo do menu/intro
     this.tracks = [];                                  // trilha normal
     this.danger = [];                                  // trilha do modo ARES
     this.active = [];                                  // lista em uso agora
@@ -82,6 +83,7 @@ export class MusicPlayer {
   // Início de partida: escolhe a lista (danger = ARES) e sorteia uma faixa.
   start(danger = false) {
     this._cancelFade();
+    this.el.loop = false;                             // partida: as faixas rotacionam (sem loop)
     this.el.muted = false;
     this.el.volume = this.volume;                     // garante o volume cheio (caso viesse de um fade)
     const useList = () => {
@@ -111,6 +113,21 @@ export class MusicPlayer {
         this.el.volume = this.volume;   // restaura p/ a próxima faixa
       }
     }, 30);
+  }
+
+  // Tema do menu/intro: toca a faixa fixa (Solar Sailer) em LOOP. Idempotente.
+  playMenu() {
+    this._cancelFade();
+    this.el.muted = false;
+    this.el.volume = this.volume;
+    this.el.loop = true;
+    this.active = [];
+    if (this.current === this.menuTrack && !this.el.paused) return;   // já tocando
+    this.current = this.menuTrack;
+    this.el.src = this.menuTrack;
+    this.el.currentTime = 0;
+    const p = this.el.play();
+    if (p && p.catch) p.catch(() => {});   // bloqueado por autoplay? destrava no 1º gesto
   }
 
   // Pausa a faixa atual mantendo a posição (Pause do jogo — sem fade).

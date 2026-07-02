@@ -247,6 +247,32 @@
     position: fixed; inset: 0; z-index: 100;
     background: #fff; opacity: 0; pointer-events: none;
   }
+  /* ---- Intro (abertura) ---- */
+  #intro {
+    position: fixed; inset: 0; z-index: 90;
+    display: grid; place-items: center;
+    background: #03060c; transition: opacity .6s ease;
+  }
+  #intro.hidden { display: none; }
+  #intro.fade-out { opacity: 0; }
+  #intro-credit, #intro-title { grid-area: 1 / 1; }   /* mesma célula: sobrepostos e centrados */
+  #intro-credit {
+    font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(18px, 3vw, 34px); letter-spacing: .14em; text-transform: uppercase;
+    color: #9fd4e6; opacity: 0; transition: opacity .9s ease;
+  }
+  #intro-credit b { color: #fff; font-weight: 800; text-shadow: 0 0 14px rgba(255,255,255,.5); }
+  #intro-credit.show { opacity: 1; }
+  #intro-title {
+    font-family: var(--font-display); font-weight: 800;
+    font-size: clamp(48px, 12vw, 130px); letter-spacing: .1em; text-transform: uppercase;
+    text-shadow: 0 0 16px currentColor;
+    opacity: 0; transition: opacity .7s ease;   /* o transform (voo) é setado inline no JS */
+    will-change: transform, opacity;
+  }
+  #intro-title.show { opacity: 1; }
+  #menu { transition: opacity .6s ease; }
+  #menu.intro-pre { opacity: 0; pointer-events: none; }   /* medível na intro, mas invisível/travado */
   .hotkey {
     display: inline-block;
     margin-left: 6px;
@@ -416,8 +442,8 @@
   </div>
 
   <!-- Menu inicial -->
-  <div id="menu" class="overlay">
-    <h2><span class="title-1">Lightcycle</span> <span class="title-2">Arena</span></h2>
+  <div id="menu" class="overlay intro-pre">
+    <h2 id="menu-title"><span class="title-1">Lightcycle</span> <span class="title-2">Arena</span></h2>
     <p>Derrube o oponente fazendo ele bater no seu rastro, no dele mesmo ou nas paredes.</p>
     <div class="btns">
       <button id="btn-cpu"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>1 Jogador · vs CPU</button>
@@ -594,6 +620,12 @@
 
   <!-- Contagem regressiva (3-2-1) -->
   <div id="countdown" class="hidden"><div id="countdown-num">3</div></div>
+
+  <!-- Intro (abertura): crédito "Um jogo de LuxDub" + título voando pro menu -->
+  <div id="intro" class="hidden">
+    <div id="intro-credit">Um jogo de <b>LuxDub</b></div>
+    <h2 id="intro-title"><span class="title-1">Lightcycle</span> <span class="title-2">Arena</span></h2>
+  </div>
 
   <!-- Fade pra branco (fim do modo ARES) -->
   <div id="fade"></div>

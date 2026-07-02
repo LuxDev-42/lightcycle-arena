@@ -62,4 +62,10 @@ export const el = {
   countdown: $("countdown"),
   countdownNum: $("countdown-num"),
   fade: $("fade"),
+
+  // Intro (abertura)
+  intro: $("intro"),
+  introCredit: $("intro-credit"),
+  introTitle: $("intro-title"),
+  menuTitle: $("menu-title"),
 };

@@ -18,6 +18,7 @@ import { defineSetting, setSetting, stepSetting, settings } from "./settings.js"
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper } from "./menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./ares-intro.js";
 import { initInput } from "./input.js";
+import { playIntro, skipIntro } from "./title-intro.js";
 
 // ---- Settings: definições (label + persistência + efeito) ----
 const MUSIC_VOLUME_MULT = 0.5;                              // teto permanente do volume da música (50%)
@@ -304,7 +305,7 @@ function goMenu() {
   renderer.updateCamera(state, 0);
   renderer.render(state);
   showOnly(el.menu);
-  music.stop();
+  music.playMenu();                        // tema do menu (Solar Sailer, em loop)
   audio.setEnginesActive(false);
 }
 
@@ -369,6 +370,7 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
   || !el.soundsMenu.classList.contains("hidden");
 
 function handleEscape() {
+  if (state.phase === "intro") { skipIntro(); return; }   // pula a abertura
   if (state.phase === "menu") {
     if (isOpenSub()) { audio.uiBack(); backToOptions(); }
     else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
@@ -515,5 +517,6 @@ buildSoundTests();
 buildNav();
 wireControls();
 initInput({ onEscape: handleEscape });
-showOnly(el.menu);
-renderer.render(state);
+renderer.render(state);                  // desenha a cena do menu (fica atrás da intro)
+state.phase = "intro";
+playIntro(() => { showOnly(el.menu); state.phase = "menu"; });   // abertura → revela o menu interativo

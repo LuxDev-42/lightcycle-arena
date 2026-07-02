@@ -99,6 +99,7 @@ export const OPPOSITE = { up: "down", down: "up", left: "right", right: "left" }
 // pastas; os caminhos/encode são montados no music.js. Se uma lista ficar vazia,
 // o music.js cai na varredura automática do diretório (precisa de listagem HTTP).
 export const MUSIC_DIR = "music/";
+export const MENU_TRACK = "Solar Sailer.mp3";           // tema do menu/intro (toca em loop)
 export const MUSIC_DANGER_DIR = "music/dangerMusic/";   // trilha do modo ARES
 export const MUSIC_EXTS = [".mp3", ".ogg", ".wav", ".m4a", ".aac", ".opus", ".flac"];
 export const MUSIC_TRACKS = [                            // trilha normal (arquivos em music/)
