@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissões core padrão da janela principal (jogo é 100% frontend, não usa IPC).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
