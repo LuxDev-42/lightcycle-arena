@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissões core padrão da janela principal (jogo é 100% frontend, não usa IPC).",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-set-fullscreen", "core:window:allow-is-fullscreen"]
 }

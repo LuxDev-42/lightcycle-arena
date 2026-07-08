@@ -6,7 +6,8 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build -c src-tauri/tauri.build.conf.json",
+    "stage:dist": "rm -rf dist && mkdir -p dist && cp -r game.html src music fonts dist/"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

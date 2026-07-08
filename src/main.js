@@ -320,19 +320,26 @@ function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
 // ---- Tela cheia (toggle no menu de gráficos) ----
-// Fullscreen API padrão (funciona no browser e no webview do Tauri); requer gesto
-// do usuário — o clique no botão já é o gesto. O rótulo segue o estado real.
+// No app (Tauri) usa o fullscreen NATIVO da janela: abre em tela cheia por default
+// (tauri.conf) e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No
+// browser cai na Fullscreen API padrão (onde o ESC sai, sem como evitar).
+function tauriWin() { return window.__TAURI__?.window?.getCurrentWindow?.() || null; }
 function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
-function toggleFullscreen() {
+function setFsSwitch(on) {
+  el.btnFullscreen.classList.toggle("on", !!on);     // bolinha p/ a direita quando ligado
+  el.btnFullscreen.setAttribute("aria-checked", on ? "true" : "false");
+}
+async function toggleFullscreen() {
+  const w = tauriWin();
+  if (w) { const on = await w.isFullscreen(); await w.setFullscreen(!on); setFsSwitch(!on); return; }
   if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
   const r = document.documentElement;
   const p = (r.requestFullscreen || r.webkitRequestFullscreen)?.call(r);
   if (p && p.catch) p.catch(() => {});
 }
-function syncFullscreenLabel() {
-  const on = !!fsElement();
-  el.btnFullscreen.classList.toggle("on", on);       // bolinha p/ a direita quando ligado
-  el.btnFullscreen.setAttribute("aria-checked", on ? "true" : "false");
+async function syncFullscreenLabel() {
+  const w = tauriWin();
+  setFsSwitch(w ? await w.isFullscreen() : !!fsElement());
 }
 
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
