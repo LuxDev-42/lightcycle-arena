@@ -16,6 +16,7 @@ export const el = {
   mapsMenu: $("maps-menu"),
   graphicsMenu: $("graphics-menu"),
   soundsMenu: $("sounds-menu"),
+  quitConfirm: $("quit-confirm"),
   soundList: $("sound-list"),
   result: $("result"),
   touchControls: $("touch-controls"),
@@ -53,6 +54,7 @@ export const el = {
   gfxVal: $("gfx-val"),
   gfxAux: $("gfx-aux"),
   btnFullscreen: $("btn-fullscreen"),
+  btnQuit: $("btn-quit"),
 
   // Intro do ARES + contagem
   aresIntro: $("ares-intro"),

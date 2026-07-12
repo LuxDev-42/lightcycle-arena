@@ -160,6 +160,12 @@
   button.alt:hover { background: var(--orange); color: var(--bg); box-shadow: 0 0 24px var(--orange); }
   button.neutral { color: #cdd9e6; border-color: #6a7d8c; box-shadow: 0 0 14px rgba(140,160,180,.15); }
   button.neutral:hover { background: #cdd9e6; color: var(--bg); box-shadow: 0 0 22px #cdd9e6; }
+  button.danger { color: #ff6b6b; border-color: #ff6b6b; box-shadow: 0 0 14px rgba(255,80,80,.2); }
+  button.danger:hover { background: #ff6b6b; color: var(--bg); box-shadow: 0 0 24px #ff6b6b; }
+  .dialog {
+    border: 1px solid rgba(25,224,255,.3); border-radius: var(--radius);
+    padding: 30px 38px; background: rgba(8,14,22,.9); box-shadow: 0 0 44px rgba(0,0,0,.6);
+  }
 
   /* ícones de linha (SVG) nos botões — herdam a cor/glow do botão via currentColor */
   .btn-icon {
@@ -465,10 +471,23 @@
       <button id="btn-cpu"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>1 Jogador · vs CPU</button>
       <button id="btn-2p" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19a4.5 4.5 0 0 1 9 0"/><path d="M11.5 19a4.5 4.5 0 0 1 9 0"/></svg>2 Jogadores</button>
       <button id="btn-options" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/></svg>Opções</button>
+      <button id="btn-quit" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>Sair</button>
     </div>
     <div class="keys" id="keys-info" style="font-size:13px;color:#6fa8bd;letter-spacing:.08em;">
       <b class="p1">P1</b>: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
       &nbsp;&nbsp; <b class="p2">P2</b>: <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+    </div>
+  </div>
+
+  <!-- Confirmação de saída -->
+  <div id="quit-confirm" class="overlay hidden">
+    <div class="dialog">
+      <h2>Sair do jogo?</h2>
+      <p>Tem certeza que deseja fechar o Lightcycle Arena?</p>
+      <div class="btns">
+        <button id="btn-quit-no" class="neutral">Cancelar <span class="hotkey">Esc</span></button>
+        <button id="btn-quit-yes" class="danger">Sair</button>
+      </div>
     </div>
   </div>
 

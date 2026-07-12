@@ -2,14 +2,42 @@
   "name": "lightcycle-arena",
   "version": "1.0.0",
   "private": true,
-  "description": "Lightcycle Arena — app desktop (Tauri) que embrulha o jogo (game.html).",
+  "description": "Lightcycle Arena — app desktop (Tauri no main; Electron nesta branch) que embrulha o jogo (game.html).",
+  "author": "Luiz Victor",
+  "main": "electron/main.js",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build -c src-tauri/tauri.build.conf.json",
-    "stage:dist": "rm -rf dist && mkdir -p dist && cp -r game.html src music fonts dist/"
+    "stage:dist": "rm -rf dist && mkdir -p dist && cp -r game.html src music fonts dist/",
+    "electron:start": "electron .",
+    "electron:selftest": "LC_SELFTEST=1 electron . --no-sandbox",
+    "electron:build": "electron-builder --linux AppImage"
+  },
+  "build": {
+    "appId": "com.luizvictor.lightcyclearena",
+    "productName": "Lightcycle Arena",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**",
+      "game.html",
+      "src/**",
+      "music/**",
+      "fonts/**"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game",
+      "icon": "src-tauri/icons/icon.png"
+    }
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
   }
 }

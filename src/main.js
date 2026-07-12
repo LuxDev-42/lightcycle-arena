@@ -319,9 +319,18 @@ function openSounds()      { showOnly(el.soundsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
+// ---- Sair do jogo (com confirmação) ----
+const isDesktop = () => !!(window.electronApp || window.__TAURI__);
+function openQuitConfirm() { showOnly(el.quitConfirm); }
+function quitApp() {
+  if (window.electronApp?.quit) { window.electronApp.quit(); return; }   // Electron
+  const w = tauriWin(); if (w) { w.close(); return; }                    // Tauri
+  window.close();                                                        // fallback (browser)
+}
+
 // ---- Tela cheia (toggle no menu de gráficos) ----
-// No app (Tauri) usa o fullscreen NATIVO da janela: abre em tela cheia por default
-// (tauri.conf) e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No
+// No app (Electron/Tauri) usa o fullscreen NATIVO da janela: abre em tela cheia
+// por default e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No
 // browser cai na Fullscreen API padrão (onde o ESC sai, sem como evitar).
 function tauriWin() { return window.__TAURI__?.window?.getCurrentWindow?.() || null; }
 function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
@@ -330,6 +339,7 @@ function setFsSwitch(on) {
   el.btnFullscreen.setAttribute("aria-checked", on ? "true" : "false");
 }
 async function toggleFullscreen() {
+  if (window.electronFS) { setFsSwitch(await window.electronFS.toggle()); return; }
   const w = tauriWin();
   if (w) { const on = await w.isFullscreen(); await w.setFullscreen(!on); setFsSwitch(!on); return; }
   if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
@@ -338,6 +348,7 @@ async function toggleFullscreen() {
   if (p && p.catch) p.catch(() => {});
 }
 async function syncFullscreenLabel() {
+  if (window.electronFS) { setFsSwitch(await window.electronFS.isFullscreen()); return; }
   const w = tauriWin();
   setFsSwitch(w ? await w.isFullscreen() : !!fsElement());
 }
@@ -395,7 +406,8 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
 function handleEscape() {
   if (state.phase === "intro") { skipIntro(); return; }   // pula a abertura
   if (state.phase === "menu") {
-    if (isOpenSub()) { audio.uiBack(); backToOptions(); }
+    if (!el.quitConfirm.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }   // cancela a confirmação de saída
+    else if (isOpenSub()) { audio.uiBack(); backToOptions(); }
     else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
   } else if (state.phase === "fade") {
     // já fazendo o fade — ignora
@@ -446,7 +458,8 @@ function buildSoundTests() {
 }
 
 function buildNav() {
-  registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options")]);
+  registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options"), navBtn("btn-quit")]);
+  registerMenu(el.quitConfirm, [navBtn("btn-quit-no"), navBtn("btn-quit-yes")]);
   registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-options-back")]);
   registerMenu(el.colorsMenu, [navSlider(el.hue1, 8), navSlider(el.hue2, 8), navBtn("btn-colors-back")]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
@@ -479,6 +492,10 @@ function wireControls() {
   });
   document.getElementById("btn-2p").addEventListener("click", () => startMatch("2p"));
   document.getElementById("btn-options").addEventListener("click", openOptions);
+  el.btnQuit.addEventListener("click", openQuitConfirm);
+  document.getElementById("btn-quit-yes").addEventListener("click", quitApp);
+  document.getElementById("btn-quit-no").addEventListener("click", backToMenu);
+  if (!isDesktop()) el.btnQuit.style.display = "none";   // browser não fecha app: esconde (menu-nav auto-exclui itens display:none)
   document.getElementById("btn-options-back").addEventListener("click", backToMenu);
   document.getElementById("btn-adversaries").addEventListener("click", openAdversaries);
   document.getElementById("btn-maps").addEventListener("click", openMaps);
