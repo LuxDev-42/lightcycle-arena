@@ -328,11 +328,10 @@ function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
 // ---- Sair do jogo (com confirmação) ----
-const isDesktop = () => !!(window.electronApp || window.__TAURI__);
+const isDesktop = () => !!window.electronApp;
 function openQuitConfirm() { showOnly(el.quitConfirm); }
 function quitApp() {
   if (window.electronApp?.quit) { window.electronApp.quit(); return; }   // Electron
-  const w = tauriWin(); if (w) { w.close(); return; }                    // Tauri
   window.close();                                                        // fallback (browser)
 }
 
@@ -343,7 +342,7 @@ function backToMultiplayer() { showOnly(el.multiplayerMenu); }
 function backToLan()         { showOnly(el.lanMenu); }
 function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
 
-// Rede exposta pelo Electron (window.lan). No browser/Tauri sem ponte, fica indisponível.
+// Rede exposta pelo Electron (window.lan). No browser sem ponte, fica indisponível.
 let lanState = { active: false, isHost: false, youId: null, players: [], myHue: 190, myColor: hueColor(190) };
 const lanAvailable = () => !!window.lan;
 
@@ -526,10 +525,9 @@ if (window.lan) window.lan.on((msg) => {
 });
 
 // ---- Tela cheia (toggle no menu de gráficos) ----
-// No app (Electron/Tauri) usa o fullscreen NATIVO da janela: abre em tela cheia
-// por default e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No
-// browser cai na Fullscreen API padrão (onde o ESC sai, sem como evitar).
-function tauriWin() { return window.__TAURI__?.window?.getCurrentWindow?.() || null; }
+// No app (Electron) usa o fullscreen NATIVO da janela: abre em tela cheia por default
+// e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No browser cai na
+// Fullscreen API padrão (onde o ESC sai, sem como evitar).
 function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
 function setFsSwitch(on) {
   el.btnFullscreen.classList.toggle("on", !!on);     // bolinha p/ a direita quando ligado
@@ -537,8 +535,6 @@ function setFsSwitch(on) {
 }
 async function toggleFullscreen() {
   if (window.electronFS) { setFsSwitch(await window.electronFS.toggle()); return; }
-  const w = tauriWin();
-  if (w) { const on = await w.isFullscreen(); await w.setFullscreen(!on); setFsSwitch(!on); return; }
   if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
   const r = document.documentElement;
   const p = (r.requestFullscreen || r.webkitRequestFullscreen)?.call(r);
@@ -546,8 +542,7 @@ async function toggleFullscreen() {
 }
 async function syncFullscreenLabel() {
   if (window.electronFS) { setFsSwitch(await window.electronFS.isFullscreen()); return; }
-  const w = tauriWin();
-  setFsSwitch(w ? await w.isFullscreen() : !!fsElement());
+  setFsSwitch(!!fsElement());
 }
 
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.

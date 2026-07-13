@@ -143,7 +143,6 @@ recria as dependências). Ex.: um zip do repositório limpo, ou o próprio `git 
 
 ## Notas
 
-- `main` continua sendo a versão **Tauri**; esta branch é a alternativa Electron.
 - As fontes (Orbitron) vêm do Google Fonts por rede; offline, o jogo cai numa fonte de
   fallback (não quebra nada).
 - `node_modules/`, `dist/` e `dist-electron/` estão no `.gitignore`.

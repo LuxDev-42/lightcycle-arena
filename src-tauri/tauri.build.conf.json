@@ -1,6 +1,0 @@
-{
-  "build": {
-    "frontendDist": "../dist",
-    "beforeBuildCommand": "npm run stage:dist"
-  }
-}

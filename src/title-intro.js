@@ -42,7 +42,7 @@ export function playIntro(revealCb) {
   el.introTitle.style.transition = "none";
   el.introTitle.style.transform = "none";
 
-  music.playMenu();                                       // Tauri: toca já; browser: destrava no gesto
+  music.playMenu();                                       // Electron: toca já; browser: destrava no gesto
   unlock = () => music.playMenu();
   window.addEventListener("pointerdown", unlock, { once: true });
   window.addEventListener("keydown", unlock, { once: true });
