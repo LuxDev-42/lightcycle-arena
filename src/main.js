@@ -445,6 +445,19 @@ function openLobby() {
 function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
 function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
 
+// Host caiu (cliente perdeu a conexão): no lobby, o próximo jogador do array assume
+// como host e os demais reprocuram; no meio da partida, encerra a sessão limpo.
+function lanHostLeft() {
+  const others = (lanState.players || []).filter((p) => !p.isHost);   // clientes na ordem
+  const iAmNext = others[0] && others[0].id === lanState.youId;       // sou o próximo → viro host
+  const inMatch = app.running;
+  app.running = false; app.paused = false; lanRole = null; lanHues = null; lanPausedBy = null;
+  setLanSteer(null); lanState.active = false;
+  if (inMatch) { console.log("%c[LAN]", "color:#ff8a1e", "host saiu no meio da partida — sessão encerrada"); showOnly(el.lanMenu); }
+  else if (iAmNext) { console.log("%c[LAN]", "color:#7CFC00", "host saiu — assumindo como novo host"); createSession(); }
+  else { console.log("%c[LAN]", "color:#19e0ff", "host saiu — procurando o novo host"); openLanFind(); }
+}
+
 // ---- Pausa LAN (sincronizada, host-autoritativa) ----
 function lanRequestPause() { if (lanAvailable()) window.lan.pause(); }
 function lanResume() { if (lanAvailable()) window.lan.resume(); }
@@ -615,7 +628,7 @@ if (window.lan) window.lan.on((msg) => {
   else if (msg.type === "return") lanReturnToLobby();          // rematch → todos voltam pro lobby
   else if (msg.type === "pause") lanOnPause(msg.data);         // alguém pausou → congela + overlay
   else if (msg.type === "resume") lanOnResume();
-  else if (msg.type === "disconnect") { if (lanRole) goMenu(); else if (lanState.active) leaveLan(); }
+  else if (msg.type === "disconnect") { if (lanState.active && !lanState.isHost) lanHostLeft(); }   // host caiu → migração/rediscovery
 });
 
 // ---- Tela cheia (toggle no menu de gráficos) ----
