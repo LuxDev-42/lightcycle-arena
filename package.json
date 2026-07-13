@@ -37,7 +37,7 @@
         "dmg"
       ],
       "category": "public.app-category.games",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.png"
     },
     "win": {
       "target": [
