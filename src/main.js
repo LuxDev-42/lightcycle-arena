@@ -363,18 +363,24 @@ async function joinSessionEntry(session) {
   await window.lan.join(session, { playerName: "Jogador", color: lanState.myColor });
   openLobby();
 }
+let lanListSig = "";   // assinatura do conjunto de sessões exibido (evita reconstruir à toa)
 function startFindSessions() {
   el.lanSessionList.innerHTML = "";
+  lanListSig = "";                                            // força reconstruir na próxima render
   if (!lanAvailable()) { el.lanFindStatus.textContent = "LAN disponível só no app desktop (Electron)."; return; }
   el.lanFindStatus.textContent = "Procurando sessões na rede…";
   window.lan.find().then(renderSessions);
 }
 function exitLanFind() { if (lanAvailable()) window.lan.stopFind(); backToLan(); }
 
-let lanLastCount = -1;
+// Só reconstrói DOM/navegação quando o conjunto de sessões REALMENTE muda — senão a
+// reconstrução a cada anúncio (~1/s) apagava o botão focado e o outline "sumia".
 function renderSessions(list) {
-  el.lanSessionList.innerHTML = "";
   el.lanFindStatus.textContent = list.length ? "Selecione uma sessão para entrar:" : "Procurando sessões na rede…";
+  const sig = list.map((s) => `${s.id}:${s.players}/${s.max}@${s.host}:${s.tcpPort}`).join("|");
+  if (sig === lanListSig) return;                            // nada mudou → preserva foco/outline
+  lanListSig = sig;
+  el.lanSessionList.innerHTML = "";
   for (const s of list) {
     const b = document.createElement("button");
     b.className = "lan-session";
@@ -384,11 +390,11 @@ function renderSessions(list) {
     b.addEventListener("click", () => joinSessionEntry(s));
     el.lanSessionList.appendChild(b);
   }
-  const nav = [...Array.from(el.lanSessionList.children).map((b) => ({ el: b, type: "button", run: () => b.click() })),
-    navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")];
-  registerMenu(el.lanFind, nav);
-  if (list.length !== lanLastCount && !el.lanFind.classList.contains("hidden")) refreshNav();   // reativa a nav só quando muda a contagem (não a cada anúncio)
-  lanLastCount = list.length;
+  registerMenu(el.lanFind, [
+    ...Array.from(el.lanSessionList.children).map((b) => ({ el: b, type: "button", run: () => b.click() })),
+    navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back"),
+  ]);
+  if (!el.lanFind.classList.contains("hidden")) refreshNav();
 }
 
 function openLobby() { el.lobbyHue.value = lanState.myHue; applyLobbyColor(false); registerLobbyNav(); showOnly(el.lobby); renderLobby(); }
@@ -515,6 +521,8 @@ function lanApplySnapshot(snap) {
 
 // Eventos vindos do processo main (Electron). Registrado uma vez.
 if (window.lan) window.lan.on((msg) => {
+  if (msg.type === "log") { console.log("%c[LAN]", "color:#19e0ff;font-weight:bold", msg.data); return; }
+  if (msg.type !== "state" && msg.type !== "input") console.log("%c[LAN]", "color:#7CFC00;font-weight:bold", msg.type, msg.data ?? "");
   if (msg.type === "sessions") renderSessions(msg.data);
   else if (msg.type === "welcome") { lanState.youId = msg.data.youId; renderLobby(); }
   else if (msg.type === "lobby") { lanState.players = msg.data.players; renderLobby(); }

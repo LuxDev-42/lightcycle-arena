@@ -4,12 +4,29 @@
 // via IPC. Modelo host-autoritativo: o host mantém o estado do lobby e o difunde.
 const dgram = require("dgram");
 const net = require("net");
+const os = require("os");
 const { EventEmitter } = require("events");
 
 const DISCOVERY_PORT = 41234;   // porta fixa de descoberta na LAN
 const ANNOUNCE_MS = 1000;       // host reanuncia a sessão a cada 1s
 const SESSION_TTL_MS = 3500;    // sessão some da lista se não anunciar nesse tempo
 const MAX_PLAYERS = 4;
+
+// Alvos de broadcast: o dirigido à sub-rede (ex.: 192.168.0.255) é bem mais confiável
+// na LAN que o 255.255.255.255 (vários roteadores/OS não entregam o "limitado").
+function broadcastTargets() {
+  const out = new Set(["255.255.255.255", "127.0.0.1"]);
+  const ifaces = os.networkInterfaces();
+  for (const name in ifaces) {
+    for (const ni of ifaces[name] || []) {
+      if (ni.family !== "IPv4" || ni.internal || !ni.netmask) continue;
+      const ip = ni.address.split(".").map(Number);
+      const mask = ni.netmask.split(".").map(Number);
+      if (ip.length === 4 && mask.length === 4) out.add(ip.map((o, i) => (o | (255 - mask[i])) & 255).join("."));
+    }
+  }
+  return [...out];
+}
 
 const genId = () => Math.random().toString(36).slice(2, 10);
 
@@ -43,7 +60,12 @@ class Host extends EventEmitter {
   }
   _startAnnounce() {
     this.udp = dgram.createSocket({ type: "udp4", reuseAddr: true });
-    this.udp.bind(() => { try { this.udp.setBroadcast(true); } catch {} this._announce(); });
+    this.udp.bind(() => {
+      try { this.udp.setBroadcast(true); } catch {}
+      this.targets = broadcastTargets();
+      this.emit("log", `host anunciando "${this.name}" (tcp ${this.tcpPort}) → [${this.targets.join(", ")}]:${DISCOVERY_PORT}`);
+      this._announce();
+    });
     this._timer = setInterval(() => this._announce(), ANNOUNCE_MS);
   }
   _announce() {
@@ -52,8 +74,9 @@ class Host extends EventEmitter {
       t: "lc-session", id: this.id, name: this.name,
       players: this.players.length, max: this.maxPlayers, tcpPort: this.tcpPort,
     }));
-    try { this.udp.send(msg, DISCOVERY_PORT, "255.255.255.255"); } catch {}   // LAN
-    try { this.udp.send(msg, DISCOVERY_PORT, "127.0.0.1"); } catch {}         // loopback (teste local)
+    for (const addr of this.targets || ["255.255.255.255", "127.0.0.1"]) {
+      try { this.udp.send(msg, DISCOVERY_PORT, addr); } catch {}
+    }
   }
   _onClient(sock) {
     if (this.started || this.players.length >= this.maxPlayers) { sock.destroy(); return; }
@@ -143,14 +166,17 @@ class Finder extends EventEmitter {
     super();
     this.sessions = new Map();   // id -> sessão
     this.udp = dgram.createSocket({ type: "udp4", reuseAddr: true });
+    this._seen = new Set();
     this.udp.on("message", (msg, rinfo) => {
       let m; try { m = JSON.parse(msg.toString()); } catch { return; }
       if (m.t !== "lc-session") return;
+      const key = rinfo.address + "|" + m.id;
+      if (!this._seen.has(key)) { this._seen.add(key); this.emit("log", `anúncio recebido de ${rinfo.address} ("${m.name}", ${m.players}/${m.max})`); }
       this.sessions.set(m.id, { id: m.id, name: m.name, players: m.players, max: m.max, host: rinfo.address, tcpPort: m.tcpPort, lastSeen: Date.now() });
       this.emit("update", this.list());
     });
     this.udp.on("error", (e) => this.emit("error", e));
-    this.udp.bind(DISCOVERY_PORT);
+    this.udp.bind(DISCOVERY_PORT, () => this.emit("log", `descoberta escutando em 0.0.0.0:${DISCOVERY_PORT}`));
     this._expire = setInterval(() => {
       const now = Date.now(); let changed = false;
       for (const [id, s] of this.sessions) if (now - s.lastSeen > SESSION_TTL_MS) { this.sessions.delete(id); changed = true; }

@@ -53,6 +53,9 @@ function createWindow() {
     },
   });
   win.loadURL("app://localhost/game.html");
+  win.webContents.on("before-input-event", (_e, input) => {   // F12 → DevTools (inspetor + console de logs)
+    if (input.type === "keyDown" && input.key === "F12") win.webContents.toggleDevTools();
+  });
   if (SELFTEST) runSelfTest();
 }
 
@@ -66,6 +69,7 @@ let lanSession = null;   // Host ou Client ativo
 let lanFinder = null;
 const lanEmit = (type, data) => { try { win && win.webContents.send("lan:event", { type, data }); } catch {} };
 function lanWire(s, isHost) {
+  s.on("log", (m) => lanEmit("log", m));            // logs de rede → console do DevTools (F12)
   s.on("lobby", (l) => lanEmit("lobby", l));
   s.on("start", (p) => lanEmit("start", p));
   if (isHost) {
@@ -89,6 +93,8 @@ ipcMain.handle("lan:find", () => {
   lanCloseFinder();
   lanFinder = lan.createFinder();
   lanFinder.on("update", (list) => lanEmit("sessions", list));
+  lanFinder.on("log", (m) => lanEmit("log", m));
+  lanFinder.on("error", (e) => lanEmit("log", "erro descoberta: " + (e && e.message)));
   return lanFinder.list();
 });
 ipcMain.handle("lan:stopFind", () => lanCloseFinder());
