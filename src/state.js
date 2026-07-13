@@ -6,9 +6,11 @@ export const state = {
   players: null,
   particles: [],
   mode: "cpu",              // "cpu" (1 humano) | "2p" (2 humanos)
-  roster: [],               // [{ isAI, label }]
+  gameMode: "ffa",          // "ffa" (todos contra todos) | "teams" (times)
+  roster: [],               // [{ isAI, label, team }]
   phase: "menu",            // "menu" | "aresintro" | "countdown" | "playing" | "dying" | "result" | "fade"
   scores: [],
+  teamScores: [0, 0],       // placar por time (modo "teams")
   roundWinner: null,
   dyingTimer: 0,
   difficulty: 2,            // definido de fato pelo setting "difficulty" no init

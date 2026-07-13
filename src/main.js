@@ -89,13 +89,25 @@ function defineSettings() {
     renderer.setQuality(GFX_MODES[v]);                     // lowFx / DPR / ratchet
     if (!app.running && state.roster.length) renderer.render(state);   // reflete na hora (o resize limpou o canvas)
   } });
+  defineSetting("gameMode", { ls: "lc.gameMode", def: 0, min: 0, max: 1, apply: (v) => {
+    el.gmVal.textContent = v === 1 ? "Times" : "Todos vs Todos";
+    if (!app.running) state.gameMode = v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
+  } });
 }
 
 // ---- Roster / round ----
 // Monta o roster a partir do modo + nº de CPUs (ARES força 1 CPU).
+const TEAM_HUES = [205, 28];   // Time A (azul-ciano), Time B (laranja)
+function teamSkin(team, idx) {
+  const base = TEAM_HUES[team] ?? 205;
+  const h = (base + (idx % 4) * 8) % 360;   // leve variação pra distinguir companheiros do mesmo time
+  return { color: hueColor(h), glow: hueGlow(h), hue: h };
+}
+
 function configureRoster(mode) {
   state.mode = mode;
   state.difficulty = settings.difficulty;
+  state.gameMode = (!state.ares && settings.gameMode === 1) ? "teams" : "ffa";   // ARES é sempre FFA
   const humans = mode === "2p" ? 2 : 1;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
@@ -104,9 +116,10 @@ function configureRoster(mode) {
   for (let i = 0; i < total; i++) {
     const isAI = i >= humans;
     const label = !isAI ? `P${i + 1}` : (state.ares ? "ARES" : (cpuCount > 1 ? `CPU ${i - humans + 1}` : "CPU"));
-    state.roster.push({ isAI, label });
+    state.roster.push({ isAI, label, team: state.gameMode === "teams" ? (i % 2) : -1 });   // times alternados
   }
   state.scores = new Array(total).fill(0);
+  state.teamScores = [0, 0];
 }
 
 let prevAlive = [];
@@ -121,9 +134,12 @@ function resetRound() {
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
+      : (state.gameMode === "teams" ? teamSkin(r.team, i)                       // modo times: cor do time
       : (lanHues && lanHues[i] != null ? { color: hueColor(lanHues[i]), glow: hueGlow(lanHues[i]), hue: lanHues[i] }  // LAN: cor do lobby (humanos)
-      : skinForIndex(i, total));                                                // CPUs / local: matiz espalhada
-    return makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
+      : skinForIndex(i, total)));                                               // CPUs / local: matiz espalhada
+    const p = makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
+    p.team = r.team ?? -1;
+    return p;
   });
   for (const player of state.players) state.grid[idx(player.x, player.y)] = player.id;
   clearSpawnRunways(state.grid, state.players);           // abre pista segura à frente de cada spawn
@@ -147,11 +163,22 @@ function playerChip(p, winnerId) {
     + `<span class="chip-score">${state.scores[p.id - 1]}</span>`
     + `</span>`;
 }
+function teamChip(team, winTeam) {
+  const h = TEAM_HUES[team], win = team === winTeam;
+  const glow = `0 0 12px hsla(${h},100%,60%,.35)` + (win ? `, 0 0 26px hsla(${h},100%,60%,.6)` : "");
+  return `<span class="chip${win ? " win" : ""}" style="border-color:hsl(${h},100%,62%);`
+    + `background:hsla(${h},100%,55%,.12);box-shadow:${glow}">`
+    + `<span class="chip-dot" style="background:hsl(${h},100%,62%);box-shadow:0 0 8px hsl(${h},100%,62%)"></span>`
+    + `<span class="chip-name" style="color:hsl(${h},100%,74%)">Time ${team === 0 ? "A" : "B"}</span>`
+    + `<span class="chip-score">${state.teamScores[team]}</span></span>`;
+}
+function teamScoreChips(winTeam = -1) { return teamChip(0, winTeam) + teamChip(1, winTeam); }
 function scoreChips(winnerId = null) {
   return state.players.map(p => playerChip(p, winnerId)).join("");
 }
 function renderScoreboard() {
-  if (state.players) el.scoreboard.innerHTML = scoreChips();
+  if (!state.players) return;
+  el.scoreboard.innerHTML = state.gameMode === "teams" ? teamScoreChips() : scoreChips();
 }
 
 // ---- Contagem ----
@@ -546,6 +573,7 @@ function startLanMatch(payload) {
   lanState.mySlot = lanSlotById[lanState.youId] ?? 0;
   state.ares = false;
   state.mode = "2p";
+  state.gameMode = "ffa";   // LAN por ora é sempre FFA (times no LAN = fase 3)
   const m = payload.match || {};
   const cpus = Math.max(0, Math.min(m.cpus ?? 0, 8 - players.length));   // CPUs (IA rodada no host) cabendo no limite
   state.roster = [
@@ -654,6 +682,12 @@ async function syncFullscreenLabel() {
 
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
 function endRound() {
+  if (state.gameMode === "teams") {
+    const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
+    if (winTeam >= 0) showVictoryTeam(winTeam);
+    else nextRound();
+    return;
+  }
   const champ = state.players.find(p => state.scores[p.id - 1] >= WIN_SCORE);
   if (champ) {
     if (state.ares) aresEnd();
@@ -679,6 +713,23 @@ function showVictory(champ) {
   el.resultTitle.style.textShadow = `0 0 16px ${champ.color}`;
   el.resultScore.innerHTML = scoreChips(champ.id);
   const againLbl = document.querySelector("#btn-again .btn-label");   // LAN: "Continuar"/"Sair"; local: "Again"/"Menu"
+  const menuLbl = document.querySelector("#btn-menu .btn-label");
+  if (againLbl) againLbl.textContent = lanRole ? "Continuar" : "Again";
+  if (menuLbl) menuLbl.textContent = lanRole ? "Sair" : "Menu";
+  showOnly(el.result);
+}
+function showVictoryTeam(team) {
+  state.phase = "result";
+  app.running = false;
+  hideTouchControls();
+  audio.setEnginesActive(false);
+  audio.victory();
+  const c = hueColor(TEAM_HUES[team]);
+  el.resultTitle.textContent = `Time ${team === 0 ? "A" : "B"} venceu`;
+  el.resultTitle.style.color = c;
+  el.resultTitle.style.textShadow = `0 0 16px ${c}`;
+  el.resultScore.innerHTML = teamScoreChips(team);
+  const againLbl = document.querySelector("#btn-again .btn-label");
   const menuLbl = document.querySelector("#btn-menu .btn-label");
   if (againLbl) againLbl.textContent = lanRole ? "Continuar" : "Again";
   if (menuLbl) menuLbl.textContent = lanRole ? "Sair" : "Menu";
@@ -783,6 +834,7 @@ function buildNav() {
     navStepper(el.spVal.closest(".stepper"), () => stepSetting("spCpus", -1), () => stepSetting("spCpus", 1)),
     navStepper(el.mpVal.closest(".stepper"), () => stepSetting("mpCpus", -1), () => stepSetting("mpCpus", 1)),
     navStepper(el.diffVal.closest(".stepper"), () => stepSetting("difficulty", -1), () => stepSetting("difficulty", 1)),
+    navStepper(el.gmVal.closest(".stepper"), () => stepSetting("gameMode", -1), () => stepSetting("gameMode", 1)),
     navBtn("btn-adv-back"),
   ]);
   registerMenu(el.mapsMenu, [
@@ -861,6 +913,8 @@ function wireControls() {
   document.getElementById("mp-inc").addEventListener("click", () => stepSetting("mpCpus", 1));
   document.getElementById("diff-dec").addEventListener("click", () => stepSetting("difficulty", -1));
   document.getElementById("diff-inc").addEventListener("click", () => stepSetting("difficulty", 1));
+  document.getElementById("gm-dec").addEventListener("click", () => stepSetting("gameMode", -1));
+  document.getElementById("gm-inc").addEventListener("click", () => stepSetting("gameMode", 1));
 
   el.hue1.addEventListener("input", refreshColorUI);
   el.hue2.addEventListener("input", refreshColorUI);

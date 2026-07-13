@@ -199,14 +199,22 @@ export function advance(state, dt) {
   // decide o round apenas durante "playing"
   let roundEnded = false;
   if (state.phase === "playing") {
-    let aliveCount = 0, survivor = null;                              // sem .filter()/.find() por frame
-    for (const player of state.players) if (player.alive) { aliveCount++; survivor = player; }
-    if (aliveCount <= 1) {
-      if (survivor) { state.scores[survivor.id - 1]++; state.roundWinner = survivor.id; }
-      else { state.roundWinner = 0; }
-      state.phase = "dying";
-      state.dyingTimer = VICTORY_MS;
-      roundEnded = true;
+    if (state.gameMode === "teams") {
+      let teams = new Set(), survivor = null;                         // fim quando sobra ≤ 1 time
+      for (const player of state.players) if (player.alive) { teams.add(player.team); survivor = player; }
+      if (teams.size <= 1) {
+        if (survivor) { state.teamScores[survivor.team]++; state.roundWinner = survivor.id; }
+        else state.roundWinner = 0;
+        state.phase = "dying"; state.dyingTimer = VICTORY_MS; roundEnded = true;
+      }
+    } else {
+      let aliveCount = 0, survivor = null;                            // FFA: sem .filter()/.find() por frame
+      for (const player of state.players) if (player.alive) { aliveCount++; survivor = player; }
+      if (aliveCount <= 1) {
+        if (survivor) { state.scores[survivor.id - 1]++; state.roundWinner = survivor.id; }
+        else { state.roundWinner = 0; }
+        state.phase = "dying"; state.dyingTimer = VICTORY_MS; roundEnded = true;
+      }
     }
   }
   return roundEnded;

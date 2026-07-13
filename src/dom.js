@@ -73,6 +73,7 @@ export const el = {
   sizeAux: $("size-aux"),
   gfxVal: $("gfx-val"),
   gfxAux: $("gfx-aux"),
+  gmVal: $("gm-val"),
   btnFullscreen: $("btn-fullscreen"),
   btnQuit: $("btn-quit"),
 
