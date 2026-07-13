@@ -76,14 +76,12 @@ function defineSettings() {
   defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_NAMES.length - 1, apply: (v) => {
     el.mapVal.textContent = ARENA_NAMES[v];                // nome do mapa
     el.mapAux.textContent = "";
-    applyArenaConfig();                                    // layout depende do mapa + tamanho
-    previewArena();
+    if (!app.running) { applyArenaConfig(); previewArena(); }   // em partida: só vale na próxima (não mexe no grid vivo)
   } });
   defineSetting("arenaSize", { ls: "lc.arenaSize", def: 1, min: 0, max: ARENA_SIZES.length - 1, apply: (v) => {
     el.sizeVal.textContent = ARENA_SIZE_NAMES[v];
     el.sizeAux.textContent = ARENA_SIZES[v] + "²";         // ex.: 180²
-    applyArenaConfig();                                    // muda COLS/ROWS e recompõe os obstáculos
-    previewArena();
+    if (!app.running) { applyArenaConfig(); previewArena(); }   // idem: muda COLS/ROWS só fora da partida
   } });
   defineSetting("gfx", { ls: "lc.gfx", def: 0, min: 0, max: 2, apply: (v) => {
     el.gfxVal.textContent = GFX_NAMES[v];
@@ -304,6 +302,7 @@ function again() {   // "Again" local = nova partida; no LAN = "Continuar" → r
 
 function goMenu() {
   app.running = false;
+  app.paused = false;
   if (lanRole) { if (lanAvailable()) window.lan.leave(); lanRole = null; lanHues = null; setLanSteer(null); }   // encerra a sessão LAN
   hideTouchControls();
   state.phase = "menu";
@@ -320,7 +319,10 @@ function goMenu() {
   audio.setEnginesActive(false);
 }
 
-function openOptions()     { showOnly(el.optionsMenu); }
+let optionsReturn = "menu";   // de onde as Opções foram abertas: menu principal ou pausa
+function openOptions()     { optionsReturn = "menu"; showOnly(el.optionsMenu); }
+function pauseOptions()    { optionsReturn = "pause"; showOnly(el.optionsMenu); }
+function closeOptions()    { showOnly(optionsReturn === "pause" ? el.pauseMenu : el.menu); }
 function openColors()      { showOnly(el.colorsMenu); }
 function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
@@ -329,6 +331,19 @@ function openGraphics()    { showOnly(el.graphicsMenu); }
 function openSounds()      { showOnly(el.soundsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
+
+// ---- Pausa (Esc durante a partida local) ----
+function pauseGame() {
+  if (!(state.phase === "playing" || state.phase === "dying" || state.phase === "countdown")) return;
+  app.paused = true;
+  music.pause();
+  showOnly(el.pauseMenu);
+}
+function resumeGame() {
+  app.paused = false;
+  music.resume();
+  showOnly(null);
+}
 
 // ---- Sair do jogo (com confirmação) ----
 const isDesktop = () => !!window.electronApp;
@@ -632,14 +647,18 @@ function handleEscape() {
     else if (!el.lanMenu.classList.contains("hidden")) { audio.uiBack(); backToMultiplayer(); } // LAN → multiplayer
     else if (!el.multiplayerMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); } // multiplayer → menu
     else if (isOpenSub()) { audio.uiBack(); backToOptions(); }
-    else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
+    else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); }
   } else if (state.phase === "fade") {
     // já fazendo o fade — ignora
   } else if (state.ares) {
     if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
     else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
-  } else {
-    audio.uiBack(); goMenu();
+  } else {   // em partida (playing/dying/countdown)
+    if (lanRole) { audio.uiBack(); goMenu(); return; }                                        // LAN: Esc sai da partida (pausa LAN = futuro)
+    if (isOpenSub()) { audio.uiBack(); backToOptions(); }                                      // sub-opção → opções
+    else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); } // opções → menu de pausa
+    else if (!el.pauseMenu.classList.contains("hidden")) { audio.uiBack(); resumeGame(); }     // pausa → continua
+    else { pauseGame(); }                                                                      // continua → pausa
   }
 }
 
@@ -709,6 +728,7 @@ function buildNav() {
   ]);
   registerMenu(el.soundsMenu, [...soundTestNav, navBtn("btn-sounds-back")]);
   registerMenu(el.result, [navBtn("btn-again"), navBtn("btn-menu")]);
+  registerMenu(el.pauseMenu, [navBtn("btn-pause-resume"), navBtn("btn-pause-options"), navBtn("btn-pause-menu")]);
   bindHover();
 }
 
@@ -736,7 +756,10 @@ function wireControls() {
   document.getElementById("btn-quit-yes").addEventListener("click", quitApp);
   document.getElementById("btn-quit-no").addEventListener("click", backToMenu);
   if (!isDesktop()) el.btnQuit.style.display = "none";   // browser não fecha app: esconde (menu-nav auto-exclui itens display:none)
-  document.getElementById("btn-options-back").addEventListener("click", backToMenu);
+  document.getElementById("btn-options-back").addEventListener("click", closeOptions);
+  document.getElementById("btn-pause-resume").addEventListener("click", resumeGame);
+  document.getElementById("btn-pause-options").addEventListener("click", pauseOptions);
+  document.getElementById("btn-pause-menu").addEventListener("click", goMenu);
   document.getElementById("btn-adversaries").addEventListener("click", openAdversaries);
   document.getElementById("btn-maps").addEventListener("click", openMaps);
   document.getElementById("btn-maps-back").addEventListener("click", backToOptions);

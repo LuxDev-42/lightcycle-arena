@@ -17,6 +17,7 @@ export const el = {
   graphicsMenu: $("graphics-menu"),
   soundsMenu: $("sounds-menu"),
   quitConfirm: $("quit-confirm"),
+  pauseMenu: $("pause-menu"),
   multiplayerMenu: $("multiplayer-menu"),
   lanMenu: $("lan-menu"),
   lanFind: $("lan-find"),
