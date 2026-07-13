@@ -97,12 +97,17 @@ class Host extends EventEmitter {
       const p = this._bySock(sock); if (p) { p.ready = !!m.ready; this._broadcastLobby(); this._maybeStart(); }
     } else if (m.t === "input") {
       const p = this._bySock(sock); if (p) this.emit("input", { id: p.id, dir: m.dir });   // input do cliente → host aplica
+    } else if (m.t === "setName") {
+      const p = this._bySock(sock); if (p) { p.name = String(m.name || "").trim().slice(0, 16) || p.name; this._broadcastLobby(); }
+    } else if (m.t === "returnReq") {
+      this.returnToLobby();   // cliente pediu "Continuar" → host reabre o lobby pra todos
     }
   }
   // Host → clientes: snapshot de estado da partida (chamado a cada frame do host).
   sendState(snap) { for (const s of this.clients.keys()) send(s, { t: "state", s: snap }); }
   // API local (o host é um jogador também)
   setColor(color) { this.players[0].color = color; this._broadcastLobby(); }
+  setName(name) { this.players[0].name = String(name || "").trim().slice(0, 16) || this.players[0].name; this._broadcastLobby(); }
   setReady(ready) { this.players[0].ready = !!ready; this._broadcastLobby(); this._maybeStart(); }
   _maybeStart() {
     if (!this.started && this.players.length >= 2 && this.players.every((p) => p.ready)) this.start();
@@ -114,6 +119,15 @@ class Host extends EventEmitter {
     const payload = { t: "start", match: this.match, players: this.players.map((p, i) => ({ ...p, slot: i })) };
     for (const s of this.clients.keys()) send(s, payload);
     this.emit("start", payload);
+  }
+  // Fim de partida → volta todos pro lobby (rematch): reabre a sessão e zera o "pronto".
+  returnToLobby() {
+    this.started = false;
+    for (const p of this.players) p.ready = false;
+    this._timer = setInterval(() => this._announce(), ANNOUNCE_MS);   // volta a ser descoberto
+    for (const s of this.clients.keys()) send(s, { t: "return" });
+    this.emit("return");
+    this._broadcastLobby();
   }
   _lobby() {
     return { t: "lobby", players: this.players, canStart: this.players.length >= 2 && this.players.every((p) => p.ready) };
@@ -150,12 +164,15 @@ class Client extends EventEmitter {
       else if (m.t === "lobby") this.emit("lobby", m);
       else if (m.t === "start") this.emit("start", m);
       else if (m.t === "state") this.emit("state", m.s);   // snapshot do host
+      else if (m.t === "return") this.emit("return");      // host reabriu o lobby (rematch)
     });
     this.sock.on("close", () => this.emit("disconnect"));
     this.sock.on("error", (e) => this.emit("error", e));
   }
   setColor(color) { send(this.sock, { t: "setColor", color }); }
+  setName(name) { send(this.sock, { t: "setName", name }); }
   setReady(ready) { send(this.sock, { t: "setReady", ready }); }
+  requestReturn() { send(this.sock, { t: "returnReq" }); }   // cliente pede rematch → host
   sendInput(dir) { send(this.sock, { t: "input", dir }); }   // cliente → host
   close() { try { this.sock.destroy(); } catch {} }
 }

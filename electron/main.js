@@ -72,6 +72,7 @@ function lanWire(s, isHost) {
   s.on("log", (m) => lanEmit("log", m));            // logs de rede → console do DevTools (F12)
   s.on("lobby", (l) => lanEmit("lobby", l));
   s.on("start", (p) => lanEmit("start", p));
+  s.on("return", () => lanEmit("return", null));    // rematch: voltou pro lobby
   if (isHost) {
     s.on("input", (d) => lanEmit("input", d));        // input dos clientes → host aplica
   } else {
@@ -104,6 +105,8 @@ ipcMain.handle("lan:join", (_e, session, opts) => {
   return { isHost: false };
 });
 ipcMain.handle("lan:setColor", (_e, color) => { if (lanSession) lanSession.setColor(color); });
+ipcMain.handle("lan:setName", (_e, name) => { if (lanSession && lanSession.setName) lanSession.setName(name); });
+ipcMain.handle("lan:returnLobby", () => { if (!lanSession) return; if (lanSession.returnToLobby) lanSession.returnToLobby(); else if (lanSession.requestReturn) lanSession.requestReturn(); });
 ipcMain.handle("lan:setReady", (_e, ready) => { if (lanSession) lanSession.setReady(ready); });
 ipcMain.handle("lan:sendInput", (_e, dir) => { if (lanSession && lanSession.sendInput) lanSession.sendInput(dir); });
 ipcMain.handle("lan:sendState", (_e, snap) => { if (lanSession && lanSession.sendState) lanSession.sendState(snap); });

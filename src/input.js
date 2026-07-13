@@ -45,6 +45,12 @@ function onKeyDown(event) {
   const key = event.key.toLowerCase();
   audio.resume();   // tecla = gesto: destrava o contexto de áudio (sons de UI/jogo)
 
+  const ae = document.activeElement;   // campo de texto focado (ex.: nome no lobby): deixa digitar
+  if (ae && ae.tagName === "INPUT" && (ae.type === "text" || ae.type === "")) {
+    if (key === "escape" || key === "enter") { event.preventDefault(); ae.blur(); }
+    return;
+  }
+
   heldKeys.add(key);
   if (event.ctrlKey && (key === "d" || key === "b")) {        // chord Ctrl+D+B → liga/desliga debug
     event.preventDefault();

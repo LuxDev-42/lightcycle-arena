@@ -297,7 +297,10 @@ async function startMatch(mode) {
   requestAnimationFrame(frame);
 }
 
-function again() { if (lanRole) { goMenu(); return; } startMatch(state.mode); }   // "Again" = nova partida (LAN: volta ao menu)
+function again() {   // "Again" local = nova partida; no LAN = "Continuar" → rematch (volta pro lobby)
+  if (lanRole) { if (lanAvailable() && window.lan.returnLobby) window.lan.returnLobby(); return; }
+  startMatch(state.mode);
+}
 
 function goMenu() {
   app.running = false;
@@ -345,12 +348,15 @@ function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
 // Rede exposta pelo Electron (window.lan). No browser sem ponte, fica indisponível.
 let lanState = { active: false, isHost: false, youId: null, players: [], myHue: 190, myColor: hueColor(190) };
 const lanAvailable = () => !!window.lan;
+const PROFILE_KEY = "lc.profile";
+const getProfileName = () => { try { return (localStorage.getItem(PROFILE_KEY) || "").trim() || "Jogador"; } catch { return "Jogador"; } };
+const setProfileName = (n) => { try { localStorage.setItem(PROFILE_KEY, n); } catch {} };
 
 async function createSession() {
   if (!lanAvailable()) return;
   const h = +el.hue1.value;
   lanState = { active: true, isHost: true, youId: null, players: [], myHue: h, myColor: hueColor(h) };
-  const info = await window.lan.create({ name: "Sessão LAN", playerName: "Host", color: lanState.myColor,
+  const info = await window.lan.create({ name: "Sala de " + getProfileName(), playerName: getProfileName(), color: lanState.myColor,
     match: { map: settings.map ?? 0, size: settings.arenaSize ?? 1 } });
   lanState.youId = info.youId;
   lanState.players = info.players || [];
@@ -360,7 +366,7 @@ async function joinSessionEntry(session) {
   if (!lanAvailable()) return;
   const h = +el.hue2.value;
   lanState = { active: true, isHost: false, youId: null, players: [], myHue: h, myColor: hueColor(h) };
-  await window.lan.join(session, { playerName: "Jogador", color: lanState.myColor });
+  await window.lan.join(session, { playerName: getProfileName(), color: lanState.myColor });
   openLobby();
 }
 let lanListSig = "";   // assinatura do conjunto de sessões exibido (evita reconstruir à toa)
@@ -397,8 +403,9 @@ function renderSessions(list) {
   if (!el.lanFind.classList.contains("hidden")) refreshNav();
 }
 
-function openLobby() { el.lobbyHue.value = lanState.myHue; applyLobbyColor(false); registerLobbyNav(); showOnly(el.lobby); renderLobby(); }
-function leaveLan() { lanState.active = false; if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
+function openLobby() { el.lobbyName.value = getProfileName(); el.lobbyHue.value = lanState.myHue; applyLobbyColor(false); registerLobbyNav(); showOnly(el.lobby); renderLobby(); }
+function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
+function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
 
 function applyLobbyColor(sendNet) {
   const c = hueColor(lanState.myHue);
@@ -413,6 +420,13 @@ function lobbyHueInput() {
   applyLobbyColor(false);                                                    // visual imediato
   clearTimeout(lobbyColorTimer);
   lobbyColorTimer = setTimeout(() => { if (lanAvailable()) window.lan.setColor(hueColor(lanState.myHue)); }, 120);  // rede com debounce
+}
+let lobbyNameTimer = null;
+function lobbyNameInput() {
+  const n = el.lobbyName.value.slice(0, 16);
+  setProfileName(n);                                                         // persiste local (localStorage)
+  clearTimeout(lobbyNameTimer);
+  lobbyNameTimer = setTimeout(() => { if (lanAvailable() && window.lan.setName) window.lan.setName(n.trim() || "Jogador"); }, 200);
 }
 function toggleReady() {
   const me = lanState.players.find((p) => p.id === lanState.youId);
@@ -529,6 +543,7 @@ if (window.lan) window.lan.on((msg) => {
   else if (msg.type === "start") startLanMatch(msg.data);
   else if (msg.type === "input") lanHostInput(msg.data);       // host: input de um cliente
   else if (msg.type === "state") lanApplySnapshot(msg.data);   // cliente: snapshot do host
+  else if (msg.type === "return") lanReturnToLobby();          // rematch → todos voltam pro lobby
   else if (msg.type === "disconnect") { if (lanRole) goMenu(); else if (lanState.active) leaveLan(); }
 });
 
@@ -579,6 +594,10 @@ function showVictory(champ) {
   el.resultTitle.style.color = champ.color;
   el.resultTitle.style.textShadow = `0 0 16px ${champ.color}`;
   el.resultScore.innerHTML = scoreChips(champ.id);
+  const againLbl = document.querySelector("#btn-again .btn-label");   // LAN: "Continuar"/"Sair"; local: "Again"/"Menu"
+  const menuLbl = document.querySelector("#btn-menu .btn-label");
+  if (againLbl) againLbl.textContent = lanRole ? "Continuar" : "Again";
+  if (menuLbl) menuLbl.textContent = lanRole ? "Sair" : "Menu";
   showOnly(el.result);
 }
 
@@ -711,6 +730,7 @@ function wireControls() {
   el.btnLobbyReady.addEventListener("click", toggleReady);
   el.btnLobbyLeave.addEventListener("click", leaveLan);
   el.lobbyHue.addEventListener("input", lobbyHueInput);
+  el.lobbyName.addEventListener("input", lobbyNameInput);
   document.getElementById("btn-options").addEventListener("click", openOptions);
   el.btnQuit.addEventListener("click", openQuitConfirm);
   document.getElementById("btn-quit-yes").addEventListener("click", quitApp);

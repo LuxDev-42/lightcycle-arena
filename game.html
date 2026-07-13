@@ -189,6 +189,14 @@
   .lobby-colors { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 8px 0 18px; }
   .lobby-colors-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
   .lobby-colors-label .swatch { margin-left: 8px; vertical-align: middle; }
+  .lobby-field { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 6px 0; }
+  .lobby-field-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
+  .text-input {
+    font-family: var(--font-display); font-size: 18px; color: #eaf6ff; text-align: center; letter-spacing: .04em;
+    background: rgba(8,14,22,.7); border: 1px solid rgba(25,224,255,.4); border-radius: var(--radius);
+    padding: 8px 14px; width: 220px; outline: none;
+  }
+  .text-input:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(25,224,255,.3); }
 
   /* ícones de linha (SVG) nos botões — herdam a cor/glow do botão via currentColor */
   .btn-icon {
@@ -550,6 +558,10 @@
     <h2 style="color:#cdd9e6">Lobby</h2>
     <p id="lobby-status" style="font-size:13px;color:#6fa8bd;letter-spacing:.06em;">Aguardando jogadores…</p>
     <div id="lobby-players"></div>
+    <div class="lobby-field">
+      <span class="lobby-field-label">Seu nome</span>
+      <input id="lobby-name" class="text-input" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Jogador" />
+    </div>
     <div class="lobby-colors">
       <span class="lobby-colors-label">Sua cor <span class="swatch" id="lobby-swatch"></span></span>
       <input type="range" id="lobby-hue" class="hue" min="0" max="360" value="190" />
@@ -712,8 +724,8 @@
     <h2 id="result-title" style="color: var(--cyan)">P1 venceu</h2>
     <p id="result-score" class="score-line">0 — 0</p>
     <div class="btns">
-      <button id="btn-again"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 1 1-2.3-5.6"/><path d="M20 3v5h-5"/></svg>Again <span class="hotkey">&#8629;</span></button>
-      <button id="btn-menu" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg>Menu <span class="hotkey">Esc</span></button>
+      <button id="btn-again"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 1 1-2.3-5.6"/><path d="M20 3v5h-5"/></svg><span class="btn-label">Again</span> <span class="hotkey">&#8629;</span></button>
+      <button id="btn-menu" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/></svg><span class="btn-label">Menu</span> <span class="hotkey">Esc</span></button>
     </div>
   </div>
 
