@@ -17,6 +17,18 @@ export const el = {
   graphicsMenu: $("graphics-menu"),
   soundsMenu: $("sounds-menu"),
   quitConfirm: $("quit-confirm"),
+  multiplayerMenu: $("multiplayer-menu"),
+  lanMenu: $("lan-menu"),
+  lanFind: $("lan-find"),
+  lanSessionList: $("lan-session-list"),
+  lanFindStatus: $("lan-find-status"),
+  lobby: $("lobby"),
+  lobbyStatus: $("lobby-status"),
+  lobbyPlayers: $("lobby-players"),
+  lobbyHue: $("lobby-hue"),
+  lobbySwatch: $("lobby-swatch"),
+  btnLobbyReady: $("btn-lobby-ready"),
+  btnLobbyLeave: $("btn-lobby-leave"),
   soundList: $("sound-list"),
   result: $("result"),
   touchControls: $("touch-controls"),
@@ -34,7 +46,8 @@ export const el = {
   cdot1: $("cdot1"),
   cdot2: $("cdot2"),
   btnCpu: $("btn-cpu"),
-  btn2p: $("btn-2p"),
+  btn2p: $("btn-multiplayer"),   // botão Multiplayer herda o tom do P2 (config)
+  btnLanFind: $("btn-lan-find"),
 
   // Áudio (sliders)
   musicVol: $("music-vol"),

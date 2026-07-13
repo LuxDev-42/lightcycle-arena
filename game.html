@@ -166,6 +166,29 @@
     border: 1px solid rgba(25,224,255,.3); border-radius: var(--radius);
     padding: 30px 38px; background: rgba(8,14,22,.9); box-shadow: 0 0 44px rgba(0,0,0,.6);
   }
+  /* Lista de sessões da LAN */
+  #lan-session-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 460px; margin: 8px auto 4px; }
+  #lan-session-list:empty { display: none; }
+  .lan-session {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    padding: 12px 16px; border: 1px solid rgba(25,224,255,.3); border-radius: var(--radius);
+    background: rgba(8,14,22,.6); cursor: pointer; text-align: left;
+    font-family: var(--font-display); letter-spacing: .04em;
+  }
+  .lan-session:hover, .lan-session.nav-focus { border-color: var(--cyan); box-shadow: 0 0 16px rgba(25,224,255,.25); outline: none; }
+  .lan-session .lan-host { font-size: 12px; color: #6fa8bd; }
+  /* Lobby */
+  #lobby-players { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 440px; margin: 10px auto; }
+  .lobby-player { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border: 1px solid rgba(140,160,180,.25); border-radius: var(--radius); background: rgba(8,14,22,.55); font-family: var(--font-display); letter-spacing: .04em; }
+  .lobby-player .pdot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; }
+  .lobby-player .pname { flex: 1; text-align: left; }
+  .lobby-player .pready { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+  .lobby-player .pready.on { color: #7CFC00; }
+  .lobby-player .pready.off { color: #6a7d8c; }
+  .lobby-player.me { border-color: rgba(25,224,255,.5); }
+  .lobby-colors { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 8px 0 18px; }
+  .lobby-colors-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
+  .lobby-colors-label .swatch { margin-left: 8px; vertical-align: middle; }
 
   /* ícones de linha (SVG) nos botões — herdam a cor/glow do botão via currentColor */
   .btn-icon {
@@ -469,7 +492,7 @@
     <p>Derrube o oponente fazendo ele bater no seu rastro, no dele mesmo ou nas paredes.</p>
     <div class="btns">
       <button id="btn-cpu"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>1 Jogador · vs CPU</button>
-      <button id="btn-2p" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19a4.5 4.5 0 0 1 9 0"/><path d="M11.5 19a4.5 4.5 0 0 1 9 0"/></svg>2 Jogadores</button>
+      <button id="btn-multiplayer" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19a4.5 4.5 0 0 1 9 0"/><path d="M11.5 19a4.5 4.5 0 0 1 9 0"/></svg>Multiplayer</button>
       <button id="btn-options" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/></svg>Opções</button>
       <button id="btn-quit" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>Sair</button>
     </div>
@@ -488,6 +511,52 @@
         <button id="btn-quit-no" class="neutral">Cancelar <span class="hotkey">Esc</span></button>
         <button id="btn-quit-yes" class="danger">Sair</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Submenu Multiplayer -->
+  <div id="multiplayer-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Multiplayer</h2>
+    <div class="btns">
+      <button id="btn-mp-local" class="alt"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M3.5 19a4.5 4.5 0 0 1 9 0"/><path d="M11.5 19a4.5 4.5 0 0 1 9 0"/></svg>Multiplayer Local</button>
+      <button id="btn-mp-lan"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>Multiplayer LAN</button>
+      <button id="btn-mp-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Submenu Multiplayer LAN -->
+  <div id="lan-menu" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Multiplayer LAN</h2>
+    <div class="btns">
+      <button id="btn-lan-create" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Criar sessão</button>
+      <button id="btn-lan-find"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>Encontrar sessão</button>
+      <button id="btn-lan-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Encontrar sessão (lista da LAN) -->
+  <div id="lan-find" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Encontrar sessão</h2>
+    <p id="lan-find-status" style="font-size:14px;color:#6fa8bd;letter-spacing:.06em;">Procurando sessões na rede…</p>
+    <div id="lan-session-list"></div>
+    <div class="btns">
+      <button id="btn-lan-refresh" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/></svg>Atualizar</button>
+      <button id="btn-lan-find-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
+    </div>
+  </div>
+
+  <!-- Lobby da sessão LAN -->
+  <div id="lobby" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Lobby</h2>
+    <p id="lobby-status" style="font-size:13px;color:#6fa8bd;letter-spacing:.06em;">Aguardando jogadores…</p>
+    <div id="lobby-players"></div>
+    <div class="lobby-colors">
+      <span class="lobby-colors-label">Sua cor <span class="swatch" id="lobby-swatch"></span></span>
+      <input type="range" id="lobby-hue" class="hue" min="0" max="360" value="190" />
+    </div>
+    <div class="btns">
+      <button id="btn-lobby-ready">Pronto</button>
+      <button id="btn-lobby-leave" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Sair <span class="hotkey">Esc</span></button>
     </div>
   </div>
 

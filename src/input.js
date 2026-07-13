@@ -18,9 +18,15 @@ const heldKeys = new Set();        // teclas seguradas agora (p/ detectar o chor
 const isPlayable = () => state.phase === "playing" || state.phase === "dying";
 const canSteer = () => isPlayable() || state.phase === "countdown";   // dá pra pré-virar na contagem
 
+// Partida LAN: se setado, o steer local é roteado pra este handler (host aplica no
+// próprio slot; cliente envia pro host) em vez de mexer direto no jogador local.
+let lanSteer = null;
+export function setLanSteer(fn) { lanSteer = fn; }
+
 // Aplica uma direção ABSOLUTA a um jogador humano (teclado e toque).
 function steer(playerId, dir) {
   if (!canSteer() || app.paused) return;
+  if (lanSteer) { lanSteer(dir); return; }                   // partida LAN: roteia (host/rede)
   const player = state.players[playerId - 1];
   if (!player || !player.alive || player.isAI) return;
   if (dir !== OPPOSITE[player.dir]) player.nextDir = dir;     // sem ré

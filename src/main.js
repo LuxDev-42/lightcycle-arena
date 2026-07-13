@@ -3,7 +3,7 @@
 // Os subsistemas vivem em módulos próprios: dom, state, app, engines, colors,
 // settings, menu-nav, ares-intro, input. Aqui fica só a cola + o fluxo + o loop.
 import {
-  COLS, DIRS, createGrid, idx, isFree,
+  COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
@@ -13,12 +13,13 @@ import { el } from "./dom.js";
 import { app } from "./app.js";
 import { state } from "./state.js";
 import { renderer, audio, music } from "./engines.js";
-import { refreshColorUI, applyColors, skinForIndex, aresSkin } from "./colors.js";
+import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./colors.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./settings.js";
-import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper } from "./menu-nav.js";
+import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, refreshNav } from "./menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./ares-intro.js";
-import { initInput } from "./input.js";
+import { initInput, setLanSteer } from "./input.js";
 import { playIntro, skipIntro } from "./title-intro.js";
+import { serializePlayers, applyPlayers } from "./lan-sync.js";
 
 // ---- Settings: definições (label + persistência + efeito) ----
 const MUSIC_VOLUME_MULT = 0.5;                              // teto permanente do volume da música (50%)
@@ -121,7 +122,9 @@ function resetRound() {
   const total = state.roster.length;
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
-    const skin = (state.ares && r.isAI) ? aresSkin() : skinForIndex(i, total);  // ARES = programa vermelho
+    const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
+      : (lanHues ? { color: hueColor(lanHues[i]), glow: hueGlow(lanHues[i]), hue: lanHues[i] }  // LAN: cor escolhida no lobby
+      : skinForIndex(i, total));
     return makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
   });
   for (const player of state.players) state.grid[idx(player.x, player.y)] = player.id;
@@ -194,7 +197,9 @@ function frame(timestamp) {
 
   if (!app.paused) {
     updateParticles(state, dt);
-    if (state.phase === "aresintro") {
+    if (lanRole === "client") {
+      /* partida LAN: o estado vem dos snapshots (lanApplySnapshot) — nada a simular aqui */
+    } else if (state.phase === "aresintro") {
       if (isTerminalActive()) updateAresTerminal(dt);
       if (!isTerminalActive()) {
         state.introTimer -= dt;
@@ -252,6 +257,7 @@ function frame(timestamp) {
       }
     }
   }
+  if (lanRole === "host") lanSendSnapshot();      // host transmite o estado a cada frame
   renderer.updateCamera(state, dt);
   let pans = null;
   if (state.players) {
@@ -266,6 +272,7 @@ function frame(timestamp) {
 
 // ---- Fluxo ----
 async function startMatch(mode) {
+  lanRole = null; lanHues = null; setLanSteer(null);   // partida local: garante que o modo LAN está desligado
   const chance = mode === "2p" ? ARES_CHANCE / 10 : ARES_CHANCE;
   state.ares = Math.random() < chance;     // sorteia o modo ARES
   aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera só após a 1ª morte)
@@ -290,10 +297,11 @@ async function startMatch(mode) {
   requestAnimationFrame(frame);
 }
 
-function again() { startMatch(state.mode); }   // "Again" = nova partida (re-sorteia ARES)
+function again() { if (lanRole) { goMenu(); return; } startMatch(state.mode); }   // "Again" = nova partida (LAN: volta ao menu)
 
 function goMenu() {
   app.running = false;
+  if (lanRole) { if (lanAvailable()) window.lan.leave(); lanRole = null; lanHues = null; setLanSteer(null); }   // encerra a sessão LAN
   hideTouchControls();
   state.phase = "menu";
   state.ares = false;                      // modo ARES só sai ao voltar pro menu
@@ -327,6 +335,195 @@ function quitApp() {
   const w = tauriWin(); if (w) { w.close(); return; }                    // Tauri
   window.close();                                                        // fallback (browser)
 }
+
+// ---- Multiplayer (menu + LAN) ----
+function openMultiplayer()   { showOnly(el.multiplayerMenu); }
+function openLan()           { showOnly(el.lanMenu); }
+function backToMultiplayer() { showOnly(el.multiplayerMenu); }
+function backToLan()         { showOnly(el.lanMenu); }
+function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
+
+// Rede exposta pelo Electron (window.lan). No browser/Tauri sem ponte, fica indisponível.
+let lanState = { active: false, isHost: false, youId: null, players: [], myHue: 190, myColor: hueColor(190) };
+const lanAvailable = () => !!window.lan;
+
+async function createSession() {
+  if (!lanAvailable()) return;
+  const h = +el.hue1.value;
+  lanState = { active: true, isHost: true, youId: null, players: [], myHue: h, myColor: hueColor(h) };
+  const info = await window.lan.create({ name: "Sessão LAN", playerName: "Host", color: lanState.myColor,
+    match: { map: settings.map ?? 0, size: settings.arenaSize ?? 1 } });
+  lanState.youId = info.youId;
+  lanState.players = info.players || [];
+  openLobby();
+}
+async function joinSessionEntry(session) {
+  if (!lanAvailable()) return;
+  const h = +el.hue2.value;
+  lanState = { active: true, isHost: false, youId: null, players: [], myHue: h, myColor: hueColor(h) };
+  await window.lan.join(session, { playerName: "Jogador", color: lanState.myColor });
+  openLobby();
+}
+function startFindSessions() {
+  el.lanSessionList.innerHTML = "";
+  if (!lanAvailable()) { el.lanFindStatus.textContent = "LAN disponível só no app desktop (Electron)."; return; }
+  el.lanFindStatus.textContent = "Procurando sessões na rede…";
+  window.lan.find().then(renderSessions);
+}
+function exitLanFind() { if (lanAvailable()) window.lan.stopFind(); backToLan(); }
+
+let lanLastCount = -1;
+function renderSessions(list) {
+  el.lanSessionList.innerHTML = "";
+  el.lanFindStatus.textContent = list.length ? "Selecione uma sessão para entrar:" : "Procurando sessões na rede…";
+  for (const s of list) {
+    const b = document.createElement("button");
+    b.className = "lan-session";
+    const nm = document.createElement("span"); nm.textContent = s.name;
+    const info = document.createElement("span"); info.className = "lan-host"; info.textContent = `${s.players}/${s.max} · ${s.host}`;
+    b.append(nm, info);
+    b.addEventListener("click", () => joinSessionEntry(s));
+    el.lanSessionList.appendChild(b);
+  }
+  const nav = [...Array.from(el.lanSessionList.children).map((b) => ({ el: b, type: "button", run: () => b.click() })),
+    navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")];
+  registerMenu(el.lanFind, nav);
+  if (list.length !== lanLastCount && !el.lanFind.classList.contains("hidden")) refreshNav();   // reativa a nav só quando muda a contagem (não a cada anúncio)
+  lanLastCount = list.length;
+}
+
+function openLobby() { el.lobbyHue.value = lanState.myHue; applyLobbyColor(false); registerLobbyNav(); showOnly(el.lobby); renderLobby(); }
+function leaveLan() { lanState.active = false; if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
+
+function applyLobbyColor(sendNet) {
+  const c = hueColor(lanState.myHue);
+  lanState.myColor = c;
+  el.lobbyHue.style.setProperty("--thumb", c);
+  el.lobbySwatch.style.background = c; el.lobbySwatch.style.boxShadow = `0 0 8px ${c}`;
+  if (sendNet && lanAvailable()) window.lan.setColor(c);
+}
+let lobbyColorTimer = null;
+function lobbyHueInput() {
+  lanState.myHue = +el.lobbyHue.value;
+  applyLobbyColor(false);                                                    // visual imediato
+  clearTimeout(lobbyColorTimer);
+  lobbyColorTimer = setTimeout(() => { if (lanAvailable()) window.lan.setColor(hueColor(lanState.myHue)); }, 120);  // rede com debounce
+}
+function toggleReady() {
+  const me = lanState.players.find((p) => p.id === lanState.youId);
+  if (lanAvailable()) window.lan.setReady(!(me && me.ready));
+}
+function registerLobbyNav() {
+  registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
+}
+function renderLobby() {
+  el.lobbyPlayers.innerHTML = "";
+  for (const p of lanState.players) {
+    const row = document.createElement("div");
+    row.className = "lobby-player" + (p.id === lanState.youId ? " me" : "");
+    const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = p.color; dot.style.boxShadow = `0 0 8px ${p.color}`;
+    const name = document.createElement("span"); name.className = "pname";
+    name.textContent = p.name + (p.isHost ? " (host)" : "") + (p.id === lanState.youId ? " · você" : "");
+    const rd = document.createElement("span"); rd.className = "pready " + (p.ready ? "on" : "off"); rd.textContent = p.ready ? "Pronto" : "Aguardando";
+    row.append(dot, name, rd);
+    el.lobbyPlayers.appendChild(row);
+  }
+  const me = lanState.players.find((p) => p.id === lanState.youId);
+  el.btnLobbyReady.textContent = me && me.ready ? "Cancelar" : "Pronto";
+  el.lobbyStatus.textContent = lanState.players.length < 2 ? "Aguardando outro jogador entrar…" : "Marque pronto para começar.";
+}
+// ---- Partida LAN (host-autoritativo: host simula e transmite estado; cliente renderiza + envia input) ----
+let lanRole = null;              // "host" | "client" | null
+let lanHues = null;              // matiz por slot na partida LAN (do lobby)
+let lanSlotById = {};            // id do jogador → slot
+const lanSyncLens = [];          // trilha já transmitida por player (host, delta)
+let lanRoundHost = 0, lanClientRound = 0;
+let lanPrevAlive = [];
+const hueOf = (c) => { const m = /hsl\((\d+)/.exec(c || ""); return m ? +m[1] : 190; };
+
+function startLanMatch(payload) {
+  lanRole = lanState.isHost ? "host" : "client";
+  const players = payload.players.slice().sort((a, b) => a.slot - b.slot);
+  lanHues = players.map((p) => hueOf(p.color));
+  lanSlotById = {}; players.forEach((p) => { lanSlotById[p.id] = p.slot; });
+  lanState.mySlot = lanSlotById[lanState.youId] ?? 0;
+  state.ares = false;
+  state.mode = "2p";
+  state.roster = players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` }));
+  state.difficulty = settings.difficulty;
+  state.scores = new Array(players.length).fill(0);
+  if (payload.match) { setArenaSize(ARENA_SIZES[payload.match.size ?? 1]); state.arenaLayout = buildArenaLayout(payload.match.map ?? 0, COLS); }
+  else applyArenaConfig();
+  showOnly(null);
+  lanRoundHost = 0; lanClientRound = 0;
+  resetRound();
+  lanAfterReset();
+  app.paused = false; app.running = true; app.lastTime = 0;
+  audio.resume(); audio.setEnginesActive(true); music.start(false);
+  setLanSteer(lanLocalSteer);
+  beginCountdown(false);          // os dois mostram a contagem; no cliente o timing vem dos snapshots
+  requestAnimationFrame(frame);
+}
+function lanAfterReset() {        // host: reseta o rastreio de delta pós-resetRound (spawn já existe nos dois)
+  lanSyncLens.length = 0;
+  lanPrevAlive = state.players.map((p) => p.alive);
+  state.players.forEach((p, i) => { lanSyncLens[i] = p.trail.length; });
+}
+function lanLocalSteer(dir) {     // input local → host aplica no próprio slot; cliente envia pro host
+  const p = state.players && state.players[lanState.mySlot];
+  if (!p || dir === OPPOSITE[p.dir]) return;
+  if (lanRole === "host") p.nextDir = dir;
+  else if (lanAvailable()) window.lan.sendInput(dir);
+}
+function lanHostInput(data) {     // host: aplica o input recebido de um cliente no slot dele
+  const p = state.players && state.players[lanSlotById[data.id]];
+  if (p && p.alive && data.dir !== OPPOSITE[p.dir]) p.nextDir = data.dir;
+}
+function lanSendSnapshot() {
+  if (!lanAvailable() || !state.players) return;
+  window.lan.sendState({
+    ph: state.phase, rw: state.roundWinner, ct: state.countdownTimer, dy: state.dyingTimer,
+    round: lanRoundHost, sc: state.scores.slice(),
+    players: serializePlayers(state.players, lanSyncLens),
+  });
+}
+function lanApplySnapshot(snap) {
+  if (lanRole !== "client" || !snap || !state.players) return;
+  if (snap.round !== lanClientRound) {          // host começou novo round → reconstrói idêntico
+    lanClientRound = snap.round;
+    resetRound();
+    lanPrevAlive = state.players.map(() => true);
+    state.countShown = -1;
+  }
+  state.scores = snap.sc; state.roundWinner = snap.rw;
+  state.countdownTimer = snap.ct; state.dyingTimer = snap.dy;
+  applyPlayers(state.players, snap.players);
+  const prevPhase = state.phase;
+  state.phase = snap.ph;
+  if (snap.ph === "countdown") { el.countdown.classList.remove("hidden"); updateCountdown(); }
+  else el.countdown.classList.add("hidden");
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    if (lanPrevAlive[i] && !p.alive) { audio.explosion(renderer.screenPan(p)); renderer.addShake(SHAKE_DEATH); renderer.addFlash(0.22, "#ffffff"); }
+    lanPrevAlive[i] = p.alive;
+  }
+  renderScoreboard();
+  if (snap.ph === "result" && prevPhase !== "result") {
+    const champ = state.players.find((p) => state.scores[p.id - 1] >= WIN_SCORE) || state.players[0];
+    showVictory(champ);
+  }
+}
+
+// Eventos vindos do processo main (Electron). Registrado uma vez.
+if (window.lan) window.lan.on((msg) => {
+  if (msg.type === "sessions") renderSessions(msg.data);
+  else if (msg.type === "welcome") { lanState.youId = msg.data.youId; renderLobby(); }
+  else if (msg.type === "lobby") { lanState.players = msg.data.players; renderLobby(); }
+  else if (msg.type === "start") startLanMatch(msg.data);
+  else if (msg.type === "input") lanHostInput(msg.data);       // host: input de um cliente
+  else if (msg.type === "state") lanApplySnapshot(msg.data);   // cliente: snapshot do host
+  else if (msg.type === "disconnect") { if (lanRole) goMenu(); else if (lanState.active) leaveLan(); }
+});
 
 // ---- Tela cheia (toggle no menu de gráficos) ----
 // No app (Electron/Tauri) usa o fullscreen NATIVO da janela: abre em tela cheia
@@ -365,6 +562,7 @@ function endRound() {
 }
 function nextRound() {
   resetRound();              // mesmo roster/placar/ARES; novas posições
+  if (lanRole === "host") { lanRoundHost++; lanAfterReset(); }   // novo round → sincroniza o reset com os clientes
   beginCountdown(false);     // 3-2-1 e segue
 }
 
@@ -406,7 +604,11 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
 function handleEscape() {
   if (state.phase === "intro") { skipIntro(); return; }   // pula a abertura
   if (state.phase === "menu") {
-    if (!el.quitConfirm.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }   // cancela a confirmação de saída
+    if (!el.quitConfirm.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }        // cancela a confirmação de saída
+    else if (!el.lobby.classList.contains("hidden")) { audio.uiBack(); leaveLan(); }           // sai do lobby (fecha a sessão)
+    else if (!el.lanFind.classList.contains("hidden")) { audio.uiBack(); exitLanFind(); }      // lista de sessões → LAN (para a descoberta)
+    else if (!el.lanMenu.classList.contains("hidden")) { audio.uiBack(); backToMultiplayer(); } // LAN → multiplayer
+    else if (!el.multiplayerMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); } // multiplayer → menu
     else if (isOpenSub()) { audio.uiBack(); backToOptions(); }
     else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }
   } else if (state.phase === "fade") {
@@ -458,8 +660,12 @@ function buildSoundTests() {
 }
 
 function buildNav() {
-  registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-2p"), navBtn("btn-options"), navBtn("btn-quit")]);
+  registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-multiplayer"), navBtn("btn-options"), navBtn("btn-quit")]);
   registerMenu(el.quitConfirm, [navBtn("btn-quit-no"), navBtn("btn-quit-yes")]);
+  registerMenu(el.multiplayerMenu, [navBtn("btn-mp-local"), navBtn("btn-mp-lan"), navBtn("btn-mp-back")]);
+  registerMenu(el.lanMenu, [navBtn("btn-lan-create"), navBtn("btn-lan-find"), navBtn("btn-lan-back")]);
+  registerMenu(el.lanFind, [navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")]);
+  registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
   registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-options-back")]);
   registerMenu(el.colorsMenu, [navSlider(el.hue1, 8), navSlider(el.hue2, 8), navBtn("btn-colors-back")]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
@@ -490,7 +696,18 @@ function wireControls() {
     el.keysInfo.innerHTML = '<b class="p1">P1</b>: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>';
     startMatch("cpu");
   });
-  document.getElementById("btn-2p").addEventListener("click", () => startMatch("2p"));
+  document.getElementById("btn-multiplayer").addEventListener("click", openMultiplayer);
+  document.getElementById("btn-mp-local").addEventListener("click", () => startMatch("2p"));
+  document.getElementById("btn-mp-lan").addEventListener("click", openLan);
+  document.getElementById("btn-mp-back").addEventListener("click", backToMenu);
+  document.getElementById("btn-lan-create").addEventListener("click", createSession);
+  document.getElementById("btn-lan-find").addEventListener("click", openLanFind);
+  document.getElementById("btn-lan-back").addEventListener("click", backToMultiplayer);
+  document.getElementById("btn-lan-refresh").addEventListener("click", startFindSessions);
+  document.getElementById("btn-lan-find-back").addEventListener("click", exitLanFind);
+  el.btnLobbyReady.addEventListener("click", toggleReady);
+  el.btnLobbyLeave.addEventListener("click", leaveLan);
+  el.lobbyHue.addEventListener("input", lobbyHueInput);
   document.getElementById("btn-options").addEventListener("click", openOptions);
   el.btnQuit.addEventListener("click", openQuitConfirm);
   document.getElementById("btn-quit-yes").addEventListener("click", quitApp);

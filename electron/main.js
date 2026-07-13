@@ -5,6 +5,7 @@
 const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const lan = require("./lan");
 
 const ROOT = path.join(__dirname, "..");          // raiz: game.html, src/, music/, fonts/
 const SELFTEST = process.env.LC_SELFTEST === "1"; // modo de verificação headless
@@ -60,6 +61,49 @@ ipcMain.handle("fs-toggle", () => { const f = !win.isFullScreen(); win.setFullSc
 ipcMain.handle("fs-is", () => (win ? win.isFullScreen() : false));
 ipcMain.handle("app-quit", () => app.quit());
 
+// ---- Multiplayer LAN (ponte pro módulo lan.js) ----
+let lanSession = null;   // Host ou Client ativo
+let lanFinder = null;
+const lanEmit = (type, data) => { try { win && win.webContents.send("lan:event", { type, data }); } catch {} };
+function lanWire(s, isHost) {
+  s.on("lobby", (l) => lanEmit("lobby", l));
+  s.on("start", (p) => lanEmit("start", p));
+  if (isHost) {
+    s.on("input", (d) => lanEmit("input", d));        // input dos clientes → host aplica
+  } else {
+    s.on("welcome", (m) => lanEmit("welcome", m));
+    s.on("disconnect", () => lanEmit("disconnect", null));
+    s.on("error", () => lanEmit("error", null));
+    s.on("state", (snap) => lanEmit("state", snap));  // snapshots do host → cliente renderiza
+  }
+}
+function lanCloseFinder() { try { lanFinder && lanFinder.close(); } catch {} lanFinder = null; }
+function lanCloseAll() { try { lanSession && lanSession.close(); } catch {} lanSession = null; lanCloseFinder(); }
+
+ipcMain.handle("lan:create", (_e, opts) => {
+  lanCloseAll();
+  lanSession = lan.createHost(opts); lanWire(lanSession, true);
+  return { isHost: true, youId: lanSession.players[0].id, name: lanSession.name, players: lanSession.players };
+});
+ipcMain.handle("lan:find", () => {
+  lanCloseFinder();
+  lanFinder = lan.createFinder();
+  lanFinder.on("update", (list) => lanEmit("sessions", list));
+  return lanFinder.list();
+});
+ipcMain.handle("lan:stopFind", () => lanCloseFinder());
+ipcMain.handle("lan:join", (_e, session, opts) => {
+  lanCloseAll();
+  lanSession = lan.joinSession(session, opts); lanWire(lanSession, false);
+  return { isHost: false };
+});
+ipcMain.handle("lan:setColor", (_e, color) => { if (lanSession) lanSession.setColor(color); });
+ipcMain.handle("lan:setReady", (_e, ready) => { if (lanSession) lanSession.setReady(ready); });
+ipcMain.handle("lan:sendInput", (_e, dir) => { if (lanSession && lanSession.sendInput) lanSession.sendInput(dir); });
+ipcMain.handle("lan:sendState", (_e, snap) => { if (lanSession && lanSession.sendState) lanSession.sendState(snap); });
+ipcMain.handle("lan:leave", () => lanCloseAll());
+app.on("before-quit", lanCloseAll);
+
 app.whenReady().then(() => { serveApp(); createWindow(); });
 app.on("window-all-closed", () => app.quit());
 
@@ -78,22 +122,33 @@ function runSelfTest() {
     await new Promise((r) => setTimeout(r, 1800));   // deixa o main.js (módulo) rodar + intro iniciar
     let probe = {};
     try {
-      probe = await wc.executeJavaScript(`(() => {
-        const q = document.getElementById('btn-quit');
-        const conf = document.getElementById('quit-confirm');
-        const hasQuitBtn = !!q && getComputedStyle(q).display !== 'none';
-        const hasElectronApp = !!(window.electronApp && window.electronApp.quit);
-        if (q) q.click();   // abre a confirmação (NÃO confirma o quit)
-        const confirmOpens = !!conf && !conf.classList.contains('hidden');
-        return {
+      probe = await wc.executeJavaScript(`(async () => {
+        const vis = (id) => { const e = document.getElementById(id); return !!e && !e.classList.contains('hidden'); };
+        const click = (id) => { const e = document.getElementById(id); if (e) e.click(); };
+        const kids = (id) => (document.getElementById(id) || { children: [] }).children.length;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const r = {
           title: document.title,
           hasCanvas: !!document.getElementById('game'),
           introStarted: !!document.getElementById('intro') && !document.getElementById('intro').classList.contains('hidden'),
-          hasQuitBtn, hasElectronApp, confirmOpens
+          hasElectronApp: !!(window.electronApp && window.electronApp.quit),
+          hasLan: !!window.lan,
+          hasQuitBtn: (() => { const q = document.getElementById('btn-quit'); return !!q && getComputedStyle(q).display !== 'none'; })()
         };
+        click('btn-multiplayer');   r.mpOpens = vis('multiplayer-menu');   // menu → Multiplayer
+        click('btn-mp-lan');        r.lanOpens = vis('lan-menu');          // → LAN
+        click('btn-lan-find');      r.findOpens = vis('lan-find');         // → Encontrar sessão
+        click('btn-lan-find-back');
+        click('btn-lan-create');    await sleep(800);                      // Criar sessão (host) → lobby
+        r.lobbyOpens = vis('lobby');
+        r.lobbyHasPlayer = kids('lobby-players') >= 1;
+        r.hasHueSlider = !!document.getElementById('lobby-hue');
+        return r;
       })()`);
     } catch (e) { failures.push("probe: " + e.message); }
-    const ok = !!(probe.hasCanvas && probe.introStarted && probe.hasQuitBtn && probe.hasElectronApp && probe.confirmOpens && failures.length === 0);
+    const ok = !!(probe.hasCanvas && probe.introStarted && probe.hasElectronApp && probe.hasLan && probe.hasQuitBtn
+      && probe.mpOpens && probe.lanOpens && probe.findOpens && probe.lobbyOpens && probe.lobbyHasPlayer && probe.hasHueSlider
+      && failures.length === 0);
     console.log("SELFTEST_RESULT " + JSON.stringify({ ok, probe, failures, consoleMsgs }));
     app.exit(ok ? 0 : 1);
   });

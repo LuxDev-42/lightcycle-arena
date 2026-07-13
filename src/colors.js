@@ -31,6 +31,9 @@ export function refreshColorUI() {
   for (const e of title2Els) { e.style.color = playerColors[1]; e.style.textShadow = `0 0 12px ${playerColors[1]}, 0 0 30px ${playerColors[1]}`; }
   if (el.btnCpu) el.btnCpu.style.setProperty("--cyan", playerColors[0]);
   if (el.btn2p) el.btn2p.style.setProperty("--orange", playerColors[1]);
+  // "Entrar numa sala" (Encontrar sessão + entradas da lista) segue a cor do P1
+  if (el.btnLanFind) el.btnLanFind.style.setProperty("--cyan", playerColors[0]);
+  if (el.lanFind) el.lanFind.style.setProperty("--cyan", playerColors[0]);
 }
 
 // Matiz de cada moto: P1/P2 dos sliders; CPUs extras espalhadas pelo círculo.

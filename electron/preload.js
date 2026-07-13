@@ -10,3 +10,16 @@ contextBridge.exposeInMainWorld("electronFS", {
 contextBridge.exposeInMainWorld("electronApp", {
   quit: () => ipcRenderer.invoke("app-quit"),
 });
+
+contextBridge.exposeInMainWorld("lan", {
+  create: (opts) => ipcRenderer.invoke("lan:create", opts),
+  find: () => ipcRenderer.invoke("lan:find"),
+  stopFind: () => ipcRenderer.invoke("lan:stopFind"),
+  join: (session, opts) => ipcRenderer.invoke("lan:join", session, opts),
+  setColor: (c) => ipcRenderer.invoke("lan:setColor", c),
+  setReady: (r) => ipcRenderer.invoke("lan:setReady", r),
+  sendInput: (dir) => ipcRenderer.invoke("lan:sendInput", dir),
+  sendState: (snap) => ipcRenderer.invoke("lan:sendState", snap),
+  leave: () => ipcRenderer.invoke("lan:leave"),
+  on: (cb) => ipcRenderer.on("lan:event", (_e, msg) => cb(msg)),
+});

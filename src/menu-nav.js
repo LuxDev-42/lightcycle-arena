@@ -24,7 +24,7 @@ export function navStepper(el, dec, inc) { return { el, type: "value", dec, inc 
 
 // ---- Registro ----
 export function registerMenu(overlayEl, navItems) {
-  overlays.push(overlayEl);
+  if (!overlays.includes(overlayEl)) overlays.push(overlayEl);   // idempotente (menus dinâmicos re-registram)
   configs.set(overlayEl, navItems);
 }
 // Liga o hover (foca o item sob o mouse). Chamar depois de registrar todos.
