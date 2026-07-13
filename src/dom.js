@@ -30,6 +30,7 @@ export const el = {
   lobbySwatch: $("lobby-swatch"),
   btnLobbyReady: $("btn-lobby-ready"),
   btnLobbyLeave: $("btn-lobby-leave"),
+  btnLobbyOptions: $("btn-lobby-options"),
   lobbyName: $("lobby-name"),
   soundList: $("sound-list"),
   result: $("result"),

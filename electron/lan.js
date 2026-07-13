@@ -108,6 +108,7 @@ class Host extends EventEmitter {
   // API local (o host é um jogador também)
   setColor(color) { this.players[0].color = color; this._broadcastLobby(); }
   setName(name) { this.players[0].name = String(name || "").trim().slice(0, 16) || this.players[0].name; this._broadcastLobby(); }
+  setMatch(cfg) { this.match = cfg; }   // host configura mapa/tamanho/dificuldade/CPUs (vai no start)
   setReady(ready) { this.players[0].ready = !!ready; this._broadcastLobby(); this._maybeStart(); }
   _maybeStart() {
     if (!this.started && this.players.length >= 2 && this.players.every((p) => p.ready)) this.start();

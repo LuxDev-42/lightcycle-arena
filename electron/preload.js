@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("lan", {
   join: (session, opts) => ipcRenderer.invoke("lan:join", session, opts),
   setColor: (c) => ipcRenderer.invoke("lan:setColor", c),
   setName: (n) => ipcRenderer.invoke("lan:setName", n),
+  setMatch: (cfg) => ipcRenderer.invoke("lan:setMatch", cfg),
   returnLobby: () => ipcRenderer.invoke("lan:returnLobby"),
   setReady: (r) => ipcRenderer.invoke("lan:setReady", r),
   sendInput: (dir) => ipcRenderer.invoke("lan:sendInput", dir),

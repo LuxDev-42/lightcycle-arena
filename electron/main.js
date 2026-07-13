@@ -106,6 +106,7 @@ ipcMain.handle("lan:join", (_e, session, opts) => {
 });
 ipcMain.handle("lan:setColor", (_e, color) => { if (lanSession) lanSession.setColor(color); });
 ipcMain.handle("lan:setName", (_e, name) => { if (lanSession && lanSession.setName) lanSession.setName(name); });
+ipcMain.handle("lan:setMatch", (_e, cfg) => { if (lanSession && lanSession.setMatch) lanSession.setMatch(cfg); });
 ipcMain.handle("lan:returnLobby", () => { if (!lanSession) return; if (lanSession.returnToLobby) lanSession.returnToLobby(); else if (lanSession.requestReturn) lanSession.requestReturn(); });
 ipcMain.handle("lan:setReady", (_e, ready) => { if (lanSession) lanSession.setReady(ready); });
 ipcMain.handle("lan:sendInput", (_e, dir) => { if (lanSession && lanSession.sendInput) lanSession.sendInput(dir); });

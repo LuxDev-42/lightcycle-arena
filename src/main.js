@@ -121,8 +121,8 @@ function resetRound() {
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
-      : (lanHues ? { color: hueColor(lanHues[i]), glow: hueGlow(lanHues[i]), hue: lanHues[i] }  // LAN: cor escolhida no lobby
-      : skinForIndex(i, total));
+      : (lanHues && lanHues[i] != null ? { color: hueColor(lanHues[i]), glow: hueGlow(lanHues[i]), hue: lanHues[i] }  // LAN: cor do lobby (humanos)
+      : skinForIndex(i, total));                                                // CPUs / local: matiz espalhada
     return makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
   });
   for (const player of state.players) state.grid[idx(player.x, player.y)] = player.id;
@@ -319,10 +319,19 @@ function goMenu() {
   audio.setEnginesActive(false);
 }
 
-let optionsReturn = "menu";   // de onde as Opções foram abertas: menu principal ou pausa
+let optionsReturn = "menu";   // de onde as Opções foram abertas: menu principal, pausa ou lobby (LAN)
 function openOptions()     { optionsReturn = "menu"; showOnly(el.optionsMenu); }
 function pauseOptions()    { optionsReturn = "pause"; showOnly(el.optionsMenu); }
-function closeOptions()    { showOnly(optionsReturn === "pause" ? el.pauseMenu : el.menu); }
+function lobbyOptions()    { optionsReturn = "lobby"; showOnly(el.optionsMenu); }
+function closeOptions() {
+  if (optionsReturn === "pause") { showOnly(el.pauseMenu); return; }
+  if (optionsReturn === "lobby") {
+    showOnly(el.lobby);
+    if (lanRole === "host" && lanAvailable()) window.lan.setMatch(currentMatchConfig());   // host: atualiza a config da partida
+    return;
+  }
+  showOnly(el.menu);
+}
 function openColors()      { showOnly(el.colorsMenu); }
 function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
@@ -366,13 +375,14 @@ const lanAvailable = () => !!window.lan;
 const PROFILE_KEY = "lc.profile";
 const getProfileName = () => { try { return (localStorage.getItem(PROFILE_KEY) || "").trim() || "Jogador"; } catch { return "Jogador"; } };
 const setProfileName = (n) => { try { localStorage.setItem(PROFILE_KEY, n); } catch {} };
+const currentMatchConfig = () => ({ map: settings.map ?? 0, size: settings.arenaSize ?? 1, difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0 });
 
 async function createSession() {
   if (!lanAvailable()) return;
   const h = +el.hue1.value;
   lanState = { active: true, isHost: true, youId: null, players: [], myHue: h, myColor: hueColor(h) };
   const info = await window.lan.create({ name: "Sala de " + getProfileName(), playerName: getProfileName(), color: lanState.myColor,
-    match: { map: settings.map ?? 0, size: settings.arenaSize ?? 1 } });
+    match: currentMatchConfig() });
   lanState.youId = info.youId;
   lanState.players = info.players || [];
   openLobby();
@@ -418,7 +428,16 @@ function renderSessions(list) {
   if (!el.lanFind.classList.contains("hidden")) refreshNav();
 }
 
-function openLobby() { el.lobbyName.value = getProfileName(); el.lobbyHue.value = lanState.myHue; applyLobbyColor(false); registerLobbyNav(); showOnly(el.lobby); renderLobby(); }
+function openLobby() {
+  el.lobbyName.value = getProfileName();
+  el.lobbyHue.value = lanState.myHue;
+  applyLobbyColor(false);
+  el.btnLobbyOptions.style.display = lanState.isHost ? "" : "none";   // só o host configura a partida
+  if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig());
+  registerLobbyNav();
+  showOnly(el.lobby);
+  renderLobby();
+}
 function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
 function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
 
@@ -448,7 +467,7 @@ function toggleReady() {
   if (lanAvailable()) window.lan.setReady(!(me && me.ready));
 }
 function registerLobbyNav() {
-  registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
+  registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-options"), navBtn("btn-lobby-leave")]);
 }
 function renderLobby() {
   el.lobbyPlayers.innerHTML = "";
@@ -483,11 +502,15 @@ function startLanMatch(payload) {
   lanState.mySlot = lanSlotById[lanState.youId] ?? 0;
   state.ares = false;
   state.mode = "2p";
-  state.roster = players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` }));
-  state.difficulty = settings.difficulty;
-  state.scores = new Array(players.length).fill(0);
-  if (payload.match) { setArenaSize(ARENA_SIZES[payload.match.size ?? 1]); state.arenaLayout = buildArenaLayout(payload.match.map ?? 0, COLS); }
-  else applyArenaConfig();
+  const m = payload.match || {};
+  const cpus = Math.max(0, Math.min(m.cpus ?? 0, 8 - players.length));   // CPUs (IA rodada no host) cabendo no limite
+  state.roster = [
+    ...players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` })),
+    ...Array.from({ length: cpus }, (_, k) => ({ isAI: true, label: cpus > 1 ? `CPU ${k + 1}` : "CPU" })),
+  ];
+  state.difficulty = m.difficulty ?? settings.difficulty;
+  state.scores = new Array(state.roster.length).fill(0);
+  setArenaSize(ARENA_SIZES[m.size ?? 1]); state.arenaLayout = buildArenaLayout(m.map ?? 0, COLS);
   showOnly(null);
   lanRoundHost = 0; lanClientRound = 0;
   resetRound();
@@ -749,6 +772,7 @@ function wireControls() {
   document.getElementById("btn-lan-find-back").addEventListener("click", exitLanFind);
   el.btnLobbyReady.addEventListener("click", toggleReady);
   el.btnLobbyLeave.addEventListener("click", leaveLan);
+  el.btnLobbyOptions.addEventListener("click", lobbyOptions);
   el.lobbyHue.addEventListener("input", lobbyHueInput);
   el.lobbyName.addEventListener("input", lobbyNameInput);
   document.getElementById("btn-options").addEventListener("click", openOptions);
