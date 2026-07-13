@@ -53,6 +53,7 @@ class Host extends EventEmitter {
     this.maxPlayers = maxPlayers;
     this.match = match;          // config da partida (mapa/tamanho) — vai no payload de start
     this.started = false;
+    this.paused = null;          // id do jogador que pausou (null = rodando)
     this.clients = new Map();   // socket -> playerId
     this.players = [{ id: genId(), name: playerName || "Host", color, ready: false, isHost: true }];
     this.server = net.createServer((sock) => this._onClient(sock));
@@ -101,6 +102,10 @@ class Host extends EventEmitter {
       const p = this._bySock(sock); if (p) { p.name = String(m.name || "").trim().slice(0, 16) || p.name; this._broadcastLobby(); }
     } else if (m.t === "returnReq") {
       this.returnToLobby();   // cliente pediu "Continuar" → host reabre o lobby pra todos
+    } else if (m.t === "pauseReq") {
+      const p = this._bySock(sock); if (p && !this.paused) this.pause(p.id, p.name);
+    } else if (m.t === "resumeReq") {
+      const p = this._bySock(sock); if (p && this.paused === p.id) this.resume();   // só quem pausou retoma
     }
   }
   // Host → clientes: snapshot de estado da partida (chamado a cada frame do host).
@@ -109,6 +114,18 @@ class Host extends EventEmitter {
   setColor(color) { this.players[0].color = color; this._broadcastLobby(); }
   setName(name) { this.players[0].name = String(name || "").trim().slice(0, 16) || this.players[0].name; this._broadcastLobby(); }
   setMatch(cfg) { this.match = cfg; }   // host configura mapa/tamanho/dificuldade/CPUs (vai no start)
+  pause(byId, byName) {   // pausa a partida pra todos (host-autoritativo)
+    if (this.paused) return;
+    this.paused = byId;
+    for (const s of this.clients.keys()) send(s, { t: "pause", by: byId, name: byName });
+    this.emit("pause", { by: byId, name: byName });
+  }
+  resume() {
+    if (!this.paused) return;
+    this.paused = null;
+    for (const s of this.clients.keys()) send(s, { t: "resume" });
+    this.emit("resume");
+  }
   setReady(ready) { this.players[0].ready = !!ready; this._broadcastLobby(); this._maybeStart(); }
   _maybeStart() {
     if (!this.started && this.players.length >= 2 && this.players.every((p) => p.ready)) this.start();
@@ -166,6 +183,8 @@ class Client extends EventEmitter {
       else if (m.t === "start") this.emit("start", m);
       else if (m.t === "state") this.emit("state", m.s);   // snapshot do host
       else if (m.t === "return") this.emit("return");      // host reabriu o lobby (rematch)
+      else if (m.t === "pause") this.emit("pause", { by: m.by, name: m.name });
+      else if (m.t === "resume") this.emit("resume");
     });
     this.sock.on("close", () => this.emit("disconnect"));
     this.sock.on("error", (e) => this.emit("error", e));
@@ -174,6 +193,8 @@ class Client extends EventEmitter {
   setName(name) { send(this.sock, { t: "setName", name }); }
   setReady(ready) { send(this.sock, { t: "setReady", ready }); }
   requestReturn() { send(this.sock, { t: "returnReq" }); }   // cliente pede rematch → host
+  sendPauseReq() { send(this.sock, { t: "pauseReq" }); }
+  sendResumeReq() { send(this.sock, { t: "resumeReq" }); }
   sendInput(dir) { send(this.sock, { t: "input", dir }); }   // cliente → host
   close() { try { this.sock.destroy(); } catch {} }
 }

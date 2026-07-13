@@ -346,6 +346,10 @@ function pauseGame() {
   if (!(state.phase === "playing" || state.phase === "dying" || state.phase === "countdown")) return;
   app.paused = true;
   music.pause();
+  el.pauseTitle.textContent = "Pausado";                                     // reset (caso um jogo LAN tenha mudado)
+  el.btnPauseResume.style.display = "";
+  el.btnPauseOptions.style.display = "";
+  el.btnPauseMenu.querySelector(".btn-label").textContent = "Menu principal";
   showOnly(el.pauseMenu);
 }
 function resumeGame() {
@@ -441,6 +445,32 @@ function openLobby() {
 function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
 function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
 
+// ---- Pausa LAN (sincronizada, host-autoritativa) ----
+function lanRequestPause() { if (lanAvailable()) window.lan.pause(); }
+function lanResume() { if (lanAvailable()) window.lan.resume(); }
+function onPauseResume() { if (lanRole) lanResume(); else resumeGame(); }
+function lanEscPause() {
+  if (isOpenSub()) { audio.uiBack(); backToOptions(); return; }                                  // sub-opção → opções (host)
+  if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); return; }  // opções → pausa
+  if (!el.pauseMenu.classList.contains("hidden")) {                                              // pausado
+    const amPauser = lanPausedBy && lanPausedBy.id === lanState.youId;
+    if (amPauser || lanRole === "host") { audio.uiBack(); lanResume(); }                         // pauser ou host retoma
+    return;
+  }
+  lanRequestPause();                                                                             // rodando → pausa
+}
+function lanOnPause(data) { lanPausedBy = { id: data.by, name: data.name }; app.paused = true; music.pause(); showLanPauseMenu(); }
+function lanOnResume() { lanPausedBy = null; app.paused = false; music.resume(); showOnly(null); }
+function showLanPauseMenu() {
+  const amPauser = lanPausedBy && lanPausedBy.id === lanState.youId;
+  const isHost = lanRole === "host";
+  el.pauseTitle.textContent = amPauser ? "Pausado" : `${(lanPausedBy && lanPausedBy.name) || "Jogador"} pausou`;
+  el.btnPauseResume.style.display = (amPauser || isHost) ? "" : "none";       // só o pauser (ou o host) retoma
+  el.btnPauseOptions.style.display = (isHost && amPauser) ? "" : "none";      // opções só p/ host que pausou
+  el.btnPauseMenu.querySelector(".btn-label").textContent = "Sair";          // no LAN o botão vira "Sair"
+  showOnly(el.pauseMenu);
+}
+
 function applyLobbyColor(sendNet) {
   const c = hueColor(lanState.myHue);
   lanState.myColor = c;
@@ -492,6 +522,7 @@ let lanSlotById = {};            // id do jogador → slot
 const lanSyncLens = [];          // trilha já transmitida por player (host, delta)
 let lanRoundHost = 0, lanClientRound = 0;
 let lanPrevAlive = [];
+let lanPausedBy = null;   // { id, name } de quem pausou (LAN), ou null
 const hueOf = (c) => { const m = /hsl\((\d+)/.exec(c || ""); return m ? +m[1] : 190; };
 
 function startLanMatch(payload) {
@@ -582,6 +613,8 @@ if (window.lan) window.lan.on((msg) => {
   else if (msg.type === "input") lanHostInput(msg.data);       // host: input de um cliente
   else if (msg.type === "state") lanApplySnapshot(msg.data);   // cliente: snapshot do host
   else if (msg.type === "return") lanReturnToLobby();          // rematch → todos voltam pro lobby
+  else if (msg.type === "pause") lanOnPause(msg.data);         // alguém pausou → congela + overlay
+  else if (msg.type === "resume") lanOnResume();
   else if (msg.type === "disconnect") { if (lanRole) goMenu(); else if (lanState.active) leaveLan(); }
 });
 
@@ -677,7 +710,7 @@ function handleEscape() {
     if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
     else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
   } else {   // em partida (playing/dying/countdown)
-    if (lanRole) { audio.uiBack(); goMenu(); return; }                                        // LAN: Esc sai da partida (pausa LAN = futuro)
+    if (lanRole) { lanEscPause(); return; }                                                   // LAN: Esc pausa (sincronizado)
     if (isOpenSub()) { audio.uiBack(); backToOptions(); }                                      // sub-opção → opções
     else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); } // opções → menu de pausa
     else if (!el.pauseMenu.classList.contains("hidden")) { audio.uiBack(); resumeGame(); }     // pausa → continua
@@ -781,7 +814,7 @@ function wireControls() {
   document.getElementById("btn-quit-no").addEventListener("click", backToMenu);
   if (!isDesktop()) el.btnQuit.style.display = "none";   // browser não fecha app: esconde (menu-nav auto-exclui itens display:none)
   document.getElementById("btn-options-back").addEventListener("click", closeOptions);
-  document.getElementById("btn-pause-resume").addEventListener("click", resumeGame);
+  document.getElementById("btn-pause-resume").addEventListener("click", onPauseResume);
   document.getElementById("btn-pause-options").addEventListener("click", pauseOptions);
   document.getElementById("btn-pause-menu").addEventListener("click", goMenu);
   document.getElementById("btn-adversaries").addEventListener("click", openAdversaries);

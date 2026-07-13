@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("lan", {
   setName: (n) => ipcRenderer.invoke("lan:setName", n),
   setMatch: (cfg) => ipcRenderer.invoke("lan:setMatch", cfg),
   returnLobby: () => ipcRenderer.invoke("lan:returnLobby"),
+  pause: () => ipcRenderer.invoke("lan:pause"),
+  resume: () => ipcRenderer.invoke("lan:resume"),
   setReady: (r) => ipcRenderer.invoke("lan:setReady", r),
   sendInput: (dir) => ipcRenderer.invoke("lan:sendInput", dir),
   sendState: (snap) => ipcRenderer.invoke("lan:sendState", snap),

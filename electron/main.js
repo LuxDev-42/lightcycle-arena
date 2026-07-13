@@ -73,6 +73,8 @@ function lanWire(s, isHost) {
   s.on("lobby", (l) => lanEmit("lobby", l));
   s.on("start", (p) => lanEmit("start", p));
   s.on("return", () => lanEmit("return", null));    // rematch: voltou pro lobby
+  s.on("pause", (d) => lanEmit("pause", d));        // pausa sincronizada
+  s.on("resume", () => lanEmit("resume", null));
   if (isHost) {
     s.on("input", (d) => lanEmit("input", d));        // input dos clientes → host aplica
   } else {
@@ -107,6 +109,16 @@ ipcMain.handle("lan:join", (_e, session, opts) => {
 ipcMain.handle("lan:setColor", (_e, color) => { if (lanSession) lanSession.setColor(color); });
 ipcMain.handle("lan:setName", (_e, name) => { if (lanSession && lanSession.setName) lanSession.setName(name); });
 ipcMain.handle("lan:setMatch", (_e, cfg) => { if (lanSession && lanSession.setMatch) lanSession.setMatch(cfg); });
+ipcMain.handle("lan:pause", () => {
+  if (!lanSession) return;
+  if (lanSession.pause) { if (!lanSession.paused) lanSession.pause(lanSession.players[0].id, lanSession.players[0].name); }   // host
+  else if (lanSession.sendPauseReq) lanSession.sendPauseReq();                                                               // cliente
+});
+ipcMain.handle("lan:resume", () => {
+  if (!lanSession) return;
+  if (lanSession.resume) lanSession.resume();                    // host força a retomada
+  else if (lanSession.sendResumeReq) lanSession.sendResumeReq(); // cliente (só se foi quem pausou)
+});
 ipcMain.handle("lan:returnLobby", () => { if (!lanSession) return; if (lanSession.returnToLobby) lanSession.returnToLobby(); else if (lanSession.requestReturn) lanSession.requestReturn(); });
 ipcMain.handle("lan:setReady", (_e, ready) => { if (lanSession) lanSession.setReady(ready); });
 ipcMain.handle("lan:sendInput", (_e, dir) => { if (lanSession && lanSession.sendInput) lanSession.sendInput(dir); });
