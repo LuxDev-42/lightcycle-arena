@@ -6,8 +6,9 @@ export const state = {
   players: null,
   particles: [],
   mode: "cpu",              // "cpu" (1 humano) | "2p" (2 humanos)
-  gameMode: "ffa",          // "ffa" (todos contra todos) | "teams" (times)
+  gameMode: "ffa",          // "ffa" (todos contra todos) | "teams" (times) | "race" (corrida)
   roster: [],               // [{ isAI, label, team }]
+  raceFinishCol: 0,         // coluna da linha de chegada (modo "race"; 0 = sem corrida)
   phase: "menu",            // "menu" | "aresintro" | "countdown" | "playing" | "dying" | "result" | "fade"
   scores: [],
   teamScores: [0, 0],       // placar por time (modo "teams")

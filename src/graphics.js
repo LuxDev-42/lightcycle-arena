@@ -144,7 +144,7 @@ export class Renderer {
   }
 
   // ---- Desenho ----
-  drawArena(ares) {
+  drawArena(ares, finishCol = 0) {
     const ctx = this.ctx;
     ctx.save();
     const halfViewW = (this.viewW / 2) / this.camZoom;
@@ -188,6 +188,19 @@ export class Renderer {
     ctx.lineWidth = 3 / this.camZoom;
     ctx.strokeStyle = ares ? "rgba(255,40,40,0.6)" : "rgba(25,224,255,0.55)";
     ctx.strokeRect(0, 0, W, H);
+
+    // Linha de chegada (modo Corrida): faixa quadriculada de 2 células no fim da pista.
+    if (finishCol > 0) {
+      const fx = finishCol * CELL, s = CELL;
+      for (let row = 0; row < ROWS; row++) {
+        const even = row % 2 === 0;
+        ctx.fillStyle = even ? "#e8f6ff" : "#0a1420"; ctx.fillRect(fx, row * CELL, s, s);
+        ctx.fillStyle = even ? "#0a1420" : "#e8f6ff"; ctx.fillRect(fx + s, row * CELL, s, s);
+      }
+      if (!this.lowFx) { ctx.shadowColor = "rgba(255,255,255,0.5)"; ctx.shadowBlur = 14; }
+      ctx.lineWidth = 2 / this.camZoom; ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.strokeRect(fx, 0, s * 2, H);
+    }
     ctx.restore();
   }
 
@@ -411,7 +424,7 @@ export class Renderer {
     ctx.scale(this.camZoom, this.camZoom);
     ctx.translate(-this.camX, -this.camY);
 
-    this.drawArena(state.ares);
+    this.drawArena(state.ares, state.raceFinishCol);
     this.drawObstacles(state);
     if (state.players) for (const player of state.players) if (player.alive || !player.trailGone) this.drawTrail(player);   // trilha persiste ~2s após a morte, depois some
     this.drawParticles(state.particles);

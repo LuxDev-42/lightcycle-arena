@@ -37,6 +37,17 @@ export function spawnLayout(n) {
   return layout;
 }
 
+// Corrida: todos largam na coluna 2, espalhados na largura (Y), virados pra +X.
+export function raceSpawnLayout(n) {
+  const startCol = 2;
+  const layout = [];
+  for (let i = 0; i < n; i++) {
+    const row = Math.round(((i + 1) / (n + 1)) * (ROWS - 1));
+    layout.push({ col: startCol, row: clamp(row, 1, ROWS - 2), dir: "right" });
+  }
+  return layout;
+}
+
 // `skin` = { color, glow, hue }; `label` = nome curto p/ placar (ex.: "P1", "CPU 2").
 export function makePlayer(id, startCol, startRow, dir, isAI, skin, label) {
   return {
@@ -204,6 +215,20 @@ export function advance(state, dt) {
       for (const player of state.players) if (player.alive) { teams.add(player.team); survivor = player; }
       if (teams.size <= 1) {
         if (survivor) { state.teamScores[survivor.team]++; state.roundWinner = survivor.id; }
+        else state.roundWinner = 0;
+        state.phase = "dying"; state.dyingTimer = VICTORY_MS; roundEnded = true;
+      }
+    } else if (state.gameMode === "race") {
+      // Corrida: vence quem cruzar a linha de chegada primeiro; se não, o último vivo.
+      let finisher = null, aliveCount = 0, survivor = null;
+      for (const player of state.players) {
+        if (!player.alive) continue;
+        aliveCount++; survivor = player;
+        if (player.x >= state.raceFinishCol && (!finisher || player.x > finisher.x)) finisher = player;
+      }
+      const winner = finisher || (aliveCount <= 1 ? survivor : null);
+      if (finisher || aliveCount <= 1) {
+        if (winner) { state.scores[winner.id - 1]++; state.roundWinner = winner.id; }
         else state.roundWinner = 0;
         state.phase = "dying"; state.dyingTimer = VICTORY_MS; roundEnded = true;
       }

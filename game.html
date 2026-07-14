@@ -215,6 +215,7 @@
   #mode-teams.active {
     background: linear-gradient(90deg, hsl(var(--a-h,205),100%,60%) 0 50%, hsl(var(--b-h,28),100%,58%) 50% 100%);
     box-shadow: 0 0 16px hsla(var(--a-h,205),100%,60%,.4), 0 0 16px hsla(var(--b-h,28),100%,58%,.4); }
+  #mode-race.active { background: hsl(48,100%,58%); box-shadow: 0 0 18px hsla(48,100%,58%,.55); }
   .text-input {
     font-family: var(--font-display); font-size: 18px; color: #eaf6ff; text-align: center; letter-spacing: .04em;
     background: rgba(8,14,22,.7); border: 1px solid rgba(25,224,255,.4); border-radius: var(--radius);
@@ -586,6 +587,7 @@
       <span class="seg">
         <button class="mode-opt active" id="mode-ffa">Mata-Mata</button>
         <button class="mode-opt" id="mode-teams">Times</button>
+        <button class="mode-opt" id="mode-race">Corrida</button>
       </span>
     </div>
     <div id="lobby-players"></div>

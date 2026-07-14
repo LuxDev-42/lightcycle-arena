@@ -83,6 +83,7 @@ export const el = {
   modeSeg: $("mode-seg"),
   modeFfa: $("mode-ffa"),
   modeTeams: $("mode-teams"),
+  modeRace: $("mode-race"),
   btnFullscreen: $("btn-fullscreen"),
   btnQuit: $("btn-quit"),
 

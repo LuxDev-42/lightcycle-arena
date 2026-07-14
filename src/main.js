@@ -7,8 +7,9 @@ import {
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
+  setArenaDims, RACE_COLS, RACE_ROWS,
 } from "./config.js";
-import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
+import { makePlayer, advance, updateParticles, spawnLayout, raceSpawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
 import { el } from "./dom.js";
 import { app } from "./app.js";
 import { state } from "./state.js";
@@ -31,8 +32,15 @@ const GFX_HINTS = ["detecta o aparelho", "tudo ligado", "mais FPS"];
 
 // O layout dos obstáculos depende do MAPA e do TAMANHO da arena; recalcula os dois.
 function applyArenaConfig() {
+  if (state.gameMode === "race") {                        // corrida: pista longa, sem obstáculos, chegada no fim
+    setArenaDims(RACE_COLS, RACE_ROWS);
+    state.arenaLayout = [];
+    state.raceFinishCol = RACE_COLS - 3;
+    return;
+  }
   setArenaSize(ARENA_SIZES[settings.arenaSize ?? 1]);     // muda COLS/ROWS/W/H
   state.arenaLayout = buildArenaLayout(settings.map ?? 0, COLS);
+  state.raceFinishCol = 0;
 }
 // Reflete a arena no fundo do menu na hora (só fora de partida e com roster montado).
 function previewArena() {
@@ -89,10 +97,11 @@ function defineSettings() {
     renderer.setQuality(GFX_MODES[v]);                     // lowFx / DPR / ratchet
     if (!app.running && state.roster.length) renderer.render(state);   // reflete na hora (o resize limpou o canvas)
   } });
-  defineSetting("gameMode", { ls: "lc.gameMode", def: 0, min: 0, max: 1, apply: (v) => {
-    el.modeFfa.classList.toggle("active", v === 0);   // pílulas no menu principal
+  defineSetting("gameMode", { ls: "lc.gameMode", def: 0, min: 0, max: 2, apply: (v) => {
+    el.modeFfa.classList.toggle("active", v === 0);   // pílulas do switch no lobby
     el.modeTeams.classList.toggle("active", v === 1);
-    if (!app.running) state.gameMode = v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
+    el.modeRace.classList.toggle("active", v === 2);
+    if (!app.running) state.gameMode = v === 2 ? "race" : v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
   } });
 }
 
@@ -108,7 +117,7 @@ function teamSkin(team, idx) {
 function configureRoster(mode) {
   state.mode = mode;
   state.difficulty = settings.difficulty;
-  state.gameMode = (!state.ares && settings.gameMode === 1) ? "teams" : "ffa";   // ARES é sempre FFA
+  state.gameMode = state.ares ? "ffa" : (settings.gameMode === 2 ? "race" : settings.gameMode === 1 ? "teams" : "ffa");   // ARES é sempre FFA
   const humans = mode === "2p" ? 2 : 1;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
@@ -132,7 +141,7 @@ function resetRound() {
   applyArena(state.grid, state.arenaLayout);              // marca os obstáculos do layout da partida
   state.particles = [];
   const total = state.roster.length;
-  const layout = spawnLayout(total);
+  const layout = state.gameMode === "race" ? raceSpawnLayout(total) : spawnLayout(total);
   state.players = state.roster.map((r, i) => {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
       : (state.gameMode === "teams" ? teamSkin(r.team, i)                       // modo times: cor do time
@@ -543,6 +552,8 @@ function setLobbyKindUI() {
   el.lobbyNameField.style.display = isLan ? "" : "none";   // nome/cor de rede: só no LAN
   el.lobbyColors.style.display = isLan ? "" : "none";
   el.modeSeg.style.display = showMode ? "" : "none";
+  el.modeRace.style.display = isLan ? "none" : "";   // Corrida: só local por ora
+  if (isLan && settings.gameMode === 2) setSetting("gameMode", 0);   // LAN não tem corrida
   el.btnLobbyOptions.style.display = showMode ? "" : "none";
   el.btnLobbyReady.textContent = isLan ? "Pronto" : "Começar";
   el.btnLobbyLeave.querySelector(".btn-label").textContent = isLan ? "Sair" : "Voltar";
@@ -565,10 +576,15 @@ function renderLocalRoster() {
   el.lobbyStatus.textContent = teams ? "No modo Times você escolhe os lados ao começar." : "Pronto para começar.";
 }
 
-function onModeChange(v) {
-  setSetting("gameMode", v);   // apply acende as pílulas + ajusta state.gameMode (fora de partida)
+function applyModeSideEffects() {
   if (lobbyKind === "lan") { if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); }
   else renderLocalRoster();
+}
+function onModeChange(v) { setSetting("gameMode", v); applyModeSideEffects(); }   // clique numa pílula
+function onModeStep(d) {   // ←/→: Corrida só no local (LAN vai só até Times)
+  const max = lobbyKind === "lan" ? 1 : 2;
+  setSetting("gameMode", Math.max(0, Math.min(max, (settings.gameMode ?? 0) + d)));
+  applyModeSideEffects();
 }
 function refreshModeSwatches() {   // pílulas de modo herdam as cores reais: P1 (hue1) no FFA, TEAM_HUES no Times
   el.modeFfa.style.setProperty("--ffa-h", +el.hue1.value);
@@ -649,7 +665,7 @@ function toggleReady() {
 }
 function registerLobbyNav() {
   const nav = [];
-  if (lobbyKind === "local" || lanState.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
+  if (lobbyKind === "local" || lanState.isHost) nav.push(navStepper(el.modeSeg, () => onModeStep(-1), () => onModeStep(1)));
   if (lobbyKind === "lan") nav.push(navSlider(el.lobbyHue, 8));
   nav.push(navBtn("btn-lobby-ready"));
   if (lobbyKind === "local" || lanState.isHost) nav.push(navBtn("btn-lobby-options"));
@@ -814,6 +830,12 @@ function endRound() {
     const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
     if (winTeam >= 0) showVictoryTeam(winTeam);
     else nextRound();
+    return;
+  }
+  if (state.gameMode === "race") {   // uma corrida decide a partida
+    const champ = state.players.find((p) => p.id === state.roundWinner);
+    if (champ) showVictory(champ);
+    else nextRound();                // ninguém cruzou nem sobrou (empate) → re-corrida
     return;
   }
   const champ = state.players.find(p => state.scores[p.id - 1] >= WIN_SCORE);
@@ -1044,6 +1066,7 @@ function wireControls() {
   document.getElementById("diff-inc").addEventListener("click", () => stepSetting("difficulty", 1));
   el.modeFfa.addEventListener("click", () => onModeChange(0));
   el.modeTeams.addEventListener("click", () => onModeChange(1));
+  el.modeRace.addEventListener("click", () => onModeChange(2));
 
   el.hue1.addEventListener("input", () => { refreshColorUI(); refreshModeSwatches(); });
   el.hue2.addEventListener("input", refreshColorUI);

@@ -56,6 +56,11 @@ export const STEPTICK_MIN_MS = 85;       // intervalo minimo do tique de passo d
 export const ARENA_SIZES = [120, 180, 240, 360];                        // células por lado (default = 180 = "Média")
 export const ARENA_SIZE_NAMES = ["Pequena", "Média", "Grande", "Enorme"];
 export function setArenaSize(n) { COLS = n; ROWS = n; W = n * CELL; H = n * CELL; }
+export function setArenaDims(cols, rows) { COLS = cols; ROWS = rows; W = cols * CELL; H = rows * CELL; }   // arena não-quadrada (corrida)
+
+// ---- Modo Corrida: pista longuíssima no eixo X, curta no Y; vence quem cruzar a chegada ----
+export const RACE_COLS = 2000;   // comprimento da pista (X)
+export const RACE_ROWS = 50;     // largura da pista (Y)
 
 // ---- Arena: obstáculos ----
 // Layouts gerados PARAMETRICAMENTE em função do tamanho `n` (centro = n/2): ficam
