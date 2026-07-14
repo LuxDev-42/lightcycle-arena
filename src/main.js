@@ -17,7 +17,7 @@ import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow 
 import { defineSetting, setSetting, stepSetting, settings } from "./settings.js";
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, refreshNav } from "./menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./ares-intro.js";
-import { initInput, setLanSteer } from "./input.js";
+import { initInput, setLanSteer, setTeamSelect } from "./input.js";
 import { playIntro, skipIntro } from "./title-intro.js";
 import { serializePlayers, applyPlayers } from "./lan-sync.js";
 
@@ -90,7 +90,8 @@ function defineSettings() {
     if (!app.running && state.roster.length) renderer.render(state);   // reflete na hora (o resize limpou o canvas)
   } });
   defineSetting("gameMode", { ls: "lc.gameMode", def: 0, min: 0, max: 1, apply: (v) => {
-    el.gmVal.textContent = v === 1 ? "Times" : "Todos vs Todos";
+    el.modeFfa.classList.toggle("active", v === 0);   // pílulas no menu principal
+    el.modeTeams.classList.toggle("active", v === 1);
     if (!app.running) state.gameMode = v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
   } });
 }
@@ -304,6 +305,11 @@ async function startMatch(mode) {
   configureRoster(mode);                   // ARES força 1 CPU
   applyArenaConfig();                      // tamanho + mapa escolhidos em Opções > Mapas
   showOnly(null);
+  if (state.gameMode === "teams" && !state.ares) { openTeamSelect(); return; }   // modo Times: escolhe os lados antes de começar
+  await beginMatch();
+}
+async function beginMatch() {
+  showOnly(null);                          // fecha a seleção de time / menus antes de começar
   resetRound();
   app.paused = false;
   app.running = true;
@@ -320,6 +326,46 @@ async function startMatch(mode) {
     beginCountdown(false);
   }
   requestAnimationFrame(frame);
+}
+
+// ---- Seleção de time (modo Times, antes da partida) ----
+function openTeamSelect() {
+  for (const r of state.roster) if (!r.isAI) r.team = -1;   // humanos começam neutros
+  balanceCPUs();
+  state.phase = "teamselect";
+  renderTeamSelect();
+  showOnly(el.teamSelect);
+}
+function balanceCPUs() {   // distribui os CPUs pro time menor (equilibra)
+  const count = [0, 0];
+  for (const r of state.roster) if (!r.isAI && r.team >= 0) count[r.team]++;
+  for (const r of state.roster) if (r.isAI) { const t = count[0] <= count[1] ? 0 : 1; r.team = t; count[t]++; }
+}
+function teamSelectMove(playerId, team) {
+  const r = state.roster[playerId - 1];
+  if (!r || r.isAI) return;
+  r.team = team;
+  balanceCPUs();
+  audio.uiMove();
+  renderTeamSelect();
+}
+function teamSelectConfirm() {
+  const humansNeutral = state.roster.some((r) => !r.isAI && r.team < 0);
+  const bothTeams = state.roster.some((r) => r.team === 0) && state.roster.some((r) => r.team === 1);
+  if (humansNeutral || !bothTeams) { renderer.addFlash(0.3, "#ff2a2a"); audio.error(); return; }   // falta alguém escolher / faltou um dos times
+  beginMatch();
+}
+function renderTeamSelect() {
+  el.teamColA.innerHTML = ""; el.teamColNeutral.innerHTML = ""; el.teamColB.innerHTML = "";
+  state.roster.forEach((r, i) => {
+    const col = r.team === 0 ? el.teamColA : r.team === 1 ? el.teamColB : el.teamColNeutral;
+    const hue = r.team === 0 ? TEAM_HUES[0] : r.team === 1 ? TEAM_HUES[1] : 210;
+    const t = document.createElement("div");
+    t.className = "ts-token" + (r.isAI ? " ai" : "");
+    t.innerHTML = `<span class="ts-dot" style="background:hsl(${hue},100%,62%);box-shadow:0 0 8px hsl(${hue},100%,62%)"></span>`
+      + `<span>${r.label}</span>` + (r.isAI ? "" : `<span class="ts-hint">${i === 0 ? "A / D" : "← / →"}</span>`);
+    col.appendChild(t);
+  });
 }
 
 function again() {   // "Again" local = nova partida; no LAN = "Continuar" → rematch (volta pro lobby)
@@ -354,7 +400,8 @@ function closeOptions() {
   if (optionsReturn === "pause") { showOnly(el.pauseMenu); return; }
   if (optionsReturn === "lobby") {
     showOnly(el.lobby);
-    if (lanRole === "host" && lanAvailable()) window.lan.setMatch(currentMatchConfig());   // host: atualiza a config da partida
+    if (lobbyKind === "local") renderLocalRoster();                                        // CPUs/mapa podem ter mudado
+    else if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); // host: atualiza a config da partida
     return;
   }
   showOnly(el.menu);
@@ -370,6 +417,7 @@ function backToMenu()      { showOnly(el.menu); }
 
 // ---- Pausa (Esc durante a partida local) ----
 function pauseGame() {
+  if (state.ares) return;   // ARES não pausa
   if (!(state.phase === "playing" || state.phase === "dying" || state.phase === "countdown")) return;
   app.paused = true;
   music.pause();
@@ -406,7 +454,7 @@ const lanAvailable = () => !!window.lan;
 const PROFILE_KEY = "lc.profile";
 const getProfileName = () => { try { return (localStorage.getItem(PROFILE_KEY) || "").trim() || "Jogador"; } catch { return "Jogador"; } };
 const setProfileName = (n) => { try { localStorage.setItem(PROFILE_KEY, n); } catch {} };
-const currentMatchConfig = () => ({ map: settings.map ?? 0, size: settings.arenaSize ?? 1, difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0 });
+const currentMatchConfig = () => ({ map: settings.map ?? 0, size: settings.arenaSize ?? 1, difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0, gameMode: settings.gameMode ?? 0 });
 
 async function createSession() {
   if (!lanAvailable()) return;
@@ -459,15 +507,78 @@ function renderSessions(list) {
   if (!el.lanFind.classList.contains("hidden")) refreshNav();
 }
 
-function openLobby() {
+// A "sala de lobby" (#lobby) serve os dois fluxos: LAN (jogadores em rede) e local
+// (singleplayer / multiplayer local). `lobbyKind` decide o que aparece e o que o
+// botão "Pronto" faz (marcar pronto na rede vs. começar a partida local).
+let lobbyKind = "lan";   // "lan" | "local"
+
+function openLobby() {   // LAN
+  lobbyKind = "lan";
+  el.lobbyTitle.textContent = "Lobby";
   el.lobbyName.value = getProfileName();
   el.lobbyHue.value = lanState.myHue;
   applyLobbyColor(false);
-  el.btnLobbyOptions.style.display = lanState.isHost ? "" : "none";   // só o host configura a partida
+  setLobbyKindUI();
   if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig());
   registerLobbyNav();
   showOnly(el.lobby);
   renderLobby();
+}
+
+function openLocalLobby(mode) {   // singleplayer / multiplayer local
+  lobbyKind = "local";
+  lanRole = null; lanHues = null; setLanSteer(null);   // garante que o modo LAN está desligado
+  state.mode = mode;
+  el.lobbyTitle.textContent = mode === "2p" ? "Multiplayer Local" : "1 Jogador";
+  setLobbyKindUI();
+  renderLocalRoster();
+  registerLobbyNav();
+  showOnly(el.lobby);
+}
+
+// Ajusta o que aparece no lobby conforme o tipo (LAN x local) e o papel (host x cliente).
+function setLobbyKindUI() {
+  const isLan = lobbyKind === "lan";
+  const showMode = !isLan || lanState.isHost;   // switch de modo: local sempre; LAN só o host
+  el.lobbyNameField.style.display = isLan ? "" : "none";   // nome/cor de rede: só no LAN
+  el.lobbyColors.style.display = isLan ? "" : "none";
+  el.modeSeg.style.display = showMode ? "" : "none";
+  el.btnLobbyOptions.style.display = showMode ? "" : "none";
+  el.btnLobbyReady.textContent = isLan ? "Pronto" : "Começar";
+  el.btnLobbyLeave.querySelector(".btn-label").textContent = isLan ? "Sair" : "Voltar";
+}
+
+// Preview do roster local (quem vai jogar) — mesmas cores da partida (skinForIndex).
+function renderLocalRoster() {
+  configureRoster(state.mode);   // monta state.roster + state.gameMode a partir das settings (a partida remonta depois)
+  const teams = state.gameMode === "teams";
+  const total = state.roster.length;
+  el.lobbyPlayers.innerHTML = "";
+  state.roster.forEach((r, i) => {
+    const c = hueColor(skinForIndex(i, total).hue);
+    const row = document.createElement("div"); row.className = "lobby-player";
+    const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = c; dot.style.boxShadow = `0 0 8px ${c}`;
+    const name = document.createElement("span"); name.className = "pname"; name.textContent = r.label;
+    row.append(dot, name);
+    el.lobbyPlayers.appendChild(row);
+  });
+  el.lobbyStatus.textContent = teams ? "No modo Times você escolhe os lados ao começar." : "Pronto para começar.";
+}
+
+function onModeChange(v) {
+  setSetting("gameMode", v);   // apply acende as pílulas + ajusta state.gameMode (fora de partida)
+  if (lobbyKind === "lan") { if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); }
+  else renderLocalRoster();
+}
+function refreshModeSwatches() {   // pílulas de modo herdam as cores reais: P1 (hue1) no FFA, TEAM_HUES no Times
+  el.modeFfa.style.setProperty("--ffa-h", +el.hue1.value);
+  el.modeTeams.style.setProperty("--a-h", TEAM_HUES[0]);
+  el.modeTeams.style.setProperty("--b-h", TEAM_HUES[1]);
+}
+function onLobbyReady() { if (lobbyKind === "local") startMatch(state.mode); else toggleReady(); }
+function onLobbyLeave() {
+  if (lobbyKind === "local") { audio.uiBack(); showOnly(state.mode === "2p" ? el.multiplayerMenu : el.menu); }
+  else leaveLan();
 }
 function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
 function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
@@ -537,7 +648,13 @@ function toggleReady() {
   if (lanAvailable()) window.lan.setReady(!(me && me.ready));
 }
 function registerLobbyNav() {
-  registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-options"), navBtn("btn-lobby-leave")]);
+  const nav = [];
+  if (lobbyKind === "local" || lanState.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
+  if (lobbyKind === "lan") nav.push(navSlider(el.lobbyHue, 8));
+  nav.push(navBtn("btn-lobby-ready"));
+  if (lobbyKind === "local" || lanState.isHost) nav.push(navBtn("btn-lobby-options"));
+  nav.push(navBtn("btn-lobby-leave"));
+  registerMenu(el.lobby, nav);
 }
 function renderLobby() {
   el.lobbyPlayers.innerHTML = "";
@@ -573,15 +690,20 @@ function startLanMatch(payload) {
   lanState.mySlot = lanSlotById[lanState.youId] ?? 0;
   state.ares = false;
   state.mode = "2p";
-  state.gameMode = "ffa";   // LAN por ora é sempre FFA (times no LAN = fase 3)
   const m = payload.match || {};
+  state.gameMode = m.gameMode === 1 ? "teams" : "ffa";
   const cpus = Math.max(0, Math.min(m.cpus ?? 0, 8 - players.length));   // CPUs (IA rodada no host) cabendo no limite
-  state.roster = [
+  const roster = [
     ...players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` })),
     ...Array.from({ length: cpus }, (_, k) => ({ isAI: true, label: cpus > 1 ? `CPU ${k + 1}` : "CPU" })),
   ];
+  // Times no LAN: alternado por ordem de slot — determinístico, host e cliente chegam
+  // no MESMO resultado sem precisar de sincronização extra da escolha de times.
+  roster.forEach((r, i) => { r.team = state.gameMode === "teams" ? (i % 2) : -1; });
+  state.roster = roster;
   state.difficulty = m.difficulty ?? settings.difficulty;
   state.scores = new Array(state.roster.length).fill(0);
+  state.teamScores = [0, 0];
   setArenaSize(ARENA_SIZES[m.size ?? 1]); state.arenaLayout = buildArenaLayout(m.map ?? 0, COLS);
   showOnly(null);
   lanRoundHost = 0; lanClientRound = 0;
@@ -612,7 +734,7 @@ function lanSendSnapshot() {
   if (!lanAvailable() || !state.players) return;
   window.lan.sendState({
     ph: state.phase, rw: state.roundWinner, ct: state.countdownTimer, dy: state.dyingTimer,
-    round: lanRoundHost, sc: state.scores.slice(),
+    round: lanRoundHost, sc: state.scores.slice(), ts: state.teamScores.slice(),
     players: serializePlayers(state.players, lanSyncLens),
   });
 }
@@ -625,6 +747,7 @@ function lanApplySnapshot(snap) {
     state.countShown = -1;
   }
   state.scores = snap.sc; state.roundWinner = snap.rw;
+  if (snap.ts) state.teamScores = snap.ts;
   state.countdownTimer = snap.ct; state.dyingTimer = snap.dy;
   applyPlayers(state.players, snap.players);
   const prevPhase = state.phase;
@@ -638,8 +761,13 @@ function lanApplySnapshot(snap) {
   }
   renderScoreboard();
   if (snap.ph === "result" && prevPhase !== "result") {
-    const champ = state.players.find((p) => state.scores[p.id - 1] >= WIN_SCORE) || state.players[0];
-    showVictory(champ);
+    if (state.gameMode === "teams") {
+      const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
+      showVictoryTeam(winTeam >= 0 ? winTeam : 0);
+    } else {
+      const champ = state.players.find((p) => state.scores[p.id - 1] >= WIN_SCORE) || state.players[0];
+      showVictory(champ);
+    }
   }
 }
 
@@ -760,9 +888,10 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
 
 function handleEscape() {
   if (state.phase === "intro") { skipIntro(); return; }   // pula a abertura
+  if (state.phase === "teamselect") { audio.uiBack(); goMenu(); return; }   // cancela a seleção de time
   if (state.phase === "menu") {
     if (!el.quitConfirm.classList.contains("hidden")) { audio.uiBack(); backToMenu(); }        // cancela a confirmação de saída
-    else if (!el.lobby.classList.contains("hidden")) { audio.uiBack(); leaveLan(); }           // sai do lobby (fecha a sessão)
+    else if (!el.lobby.classList.contains("hidden")) { audio.uiBack(); onLobbyLeave(); }         // sai do lobby (LAN fecha a sessão; local volta)
     else if (!el.lanFind.classList.contains("hidden")) { audio.uiBack(); exitLanFind(); }      // lista de sessões → LAN (para a descoberta)
     else if (!el.lanMenu.classList.contains("hidden")) { audio.uiBack(); backToMultiplayer(); } // LAN → multiplayer
     else if (!el.multiplayerMenu.classList.contains("hidden")) { audio.uiBack(); backToMenu(); } // multiplayer → menu
@@ -834,7 +963,6 @@ function buildNav() {
     navStepper(el.spVal.closest(".stepper"), () => stepSetting("spCpus", -1), () => stepSetting("spCpus", 1)),
     navStepper(el.mpVal.closest(".stepper"), () => stepSetting("mpCpus", -1), () => stepSetting("mpCpus", 1)),
     navStepper(el.diffVal.closest(".stepper"), () => stepSetting("difficulty", -1), () => stepSetting("difficulty", 1)),
-    navStepper(el.gmVal.closest(".stepper"), () => stepSetting("gameMode", -1), () => stepSetting("gameMode", 1)),
     navBtn("btn-adv-back"),
   ]);
   registerMenu(el.mapsMenu, [
@@ -850,6 +978,7 @@ function buildNav() {
   registerMenu(el.soundsMenu, [...soundTestNav, navBtn("btn-sounds-back")]);
   registerMenu(el.result, [navBtn("btn-again"), navBtn("btn-menu")]);
   registerMenu(el.pauseMenu, [navBtn("btn-pause-resume"), navBtn("btn-pause-options"), navBtn("btn-pause-menu")]);
+  registerMenu(el.teamSelect, []);   // sem nav de menu: o input é por-jogador (esq/dir), tratado no input.js
   bindHover();
 }
 
@@ -857,10 +986,10 @@ function buildNav() {
 function wireControls() {
   document.getElementById("btn-cpu").addEventListener("click", () => {
     el.keysInfo.innerHTML = '<b class="p1">P1</b>: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>';
-    startMatch("cpu");
+    openLocalLobby("cpu");
   });
   document.getElementById("btn-multiplayer").addEventListener("click", openMultiplayer);
-  document.getElementById("btn-mp-local").addEventListener("click", () => startMatch("2p"));
+  document.getElementById("btn-mp-local").addEventListener("click", () => openLocalLobby("2p"));
   document.getElementById("btn-mp-lan").addEventListener("click", openLan);
   document.getElementById("btn-mp-back").addEventListener("click", backToMenu);
   document.getElementById("btn-lan-create").addEventListener("click", createSession);
@@ -868,8 +997,8 @@ function wireControls() {
   document.getElementById("btn-lan-back").addEventListener("click", backToMultiplayer);
   document.getElementById("btn-lan-refresh").addEventListener("click", startFindSessions);
   document.getElementById("btn-lan-find-back").addEventListener("click", exitLanFind);
-  el.btnLobbyReady.addEventListener("click", toggleReady);
-  el.btnLobbyLeave.addEventListener("click", leaveLan);
+  el.btnLobbyReady.addEventListener("click", onLobbyReady);
+  el.btnLobbyLeave.addEventListener("click", onLobbyLeave);
   el.btnLobbyOptions.addEventListener("click", lobbyOptions);
   el.lobbyHue.addEventListener("input", lobbyHueInput);
   el.lobbyName.addEventListener("input", lobbyNameInput);
@@ -913,10 +1042,10 @@ function wireControls() {
   document.getElementById("mp-inc").addEventListener("click", () => stepSetting("mpCpus", 1));
   document.getElementById("diff-dec").addEventListener("click", () => stepSetting("difficulty", -1));
   document.getElementById("diff-inc").addEventListener("click", () => stepSetting("difficulty", 1));
-  document.getElementById("gm-dec").addEventListener("click", () => stepSetting("gameMode", -1));
-  document.getElementById("gm-inc").addEventListener("click", () => stepSetting("gameMode", 1));
+  el.modeFfa.addEventListener("click", () => onModeChange(0));
+  el.modeTeams.addEventListener("click", () => onModeChange(1));
 
-  el.hue1.addEventListener("input", refreshColorUI);
+  el.hue1.addEventListener("input", () => { refreshColorUI(); refreshModeSwatches(); });
   el.hue2.addEventListener("input", refreshColorUI);
   el.musicVol.addEventListener("input", () => setSetting("music", +el.musicVol.value / 100));
   el.sfxVol.addEventListener("input", () => setSetting("sfx", +el.sfxVol.value / 100));
@@ -939,6 +1068,7 @@ function wireControls() {
 
 // ---- Init ----
 refreshColorUI();
+refreshModeSwatches();
 defineSettings();                        // carrega + aplica todas as preferências salvas
 configureRoster("cpu");                  // roster padrão p/ a cena do menu
 resetRound();
@@ -949,6 +1079,7 @@ buildSoundTests();
 buildNav();
 wireControls();
 initInput({ onEscape: handleEscape });
+setTeamSelect((pid, action) => { if (action === "confirm") teamSelectConfirm(); else teamSelectMove(pid, action); });
 renderer.render(state);                  // desenha a cena do menu (fica atrás da intro)
 state.phase = "intro";
 playIntro(() => { showOnly(el.menu); state.phase = "menu"; });   // abertura → revela o menu interativo

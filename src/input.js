@@ -40,6 +40,8 @@ function steerTurn(playerId, side) {
 }
 
 let onEscape = () => {};
+let teamSelectFn = null;
+export function setTeamSelect(fn) { teamSelectFn = fn; }   // seleção de time (modo Times)
 
 function onKeyDown(event) {
   const key = event.key.toLowerCase();
@@ -65,6 +67,18 @@ function onKeyDown(event) {
   }
   if (key === "m") { audio.toggleMute(); return; }
   if (key === "escape") { onEscape(); return; }
+  if (state.phase === "teamselect") {   // seleção de time: cada humano vai pra esquerda (A) ou direita (B)
+    event.preventDefault();
+    if (key === "enter" || key === " " || key === "spacebar") { teamSelectFn && teamSelectFn(0, "confirm"); return; }
+    const b = KEYMAP[key];
+    if (b) {
+      let [pid, dir] = b;
+      if (state.mode === "cpu" && pid === 2) pid = 1;   // no single, setas também são do P1
+      if (dir === "left") teamSelectFn && teamSelectFn(pid, 0);
+      else if (dir === "right") teamSelectFn && teamSelectFn(pid, 1);
+    }
+    return;
+  }
   if (isNavActive()) {   // navegação dos menus
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
     if (key === "w" || key === "arrowup") { event.preventDefault(); moveNav(-1); }
@@ -74,7 +88,7 @@ function onKeyDown(event) {
     else if (key === "enter" || key === " " || key === "spacebar") { event.preventDefault(); activateNav(); }
     return;
   }
-  if (key === "p" && isPlayable()) {
+  if (key === "p" && isPlayable() && !state.ares) {   // ARES não pausa
     app.paused = !app.paused;
     if (app.paused) music.pause(); else music.resume();   // pausa/retoma a trilha junto com o jogo
     return;

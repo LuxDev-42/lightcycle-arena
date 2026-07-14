@@ -106,6 +106,7 @@
     padding: 24px;
   }
   .overlay.hidden { display: none; }
+  #pause-menu { z-index: 110; }   /* pausa sempre por cima de tudo (contador, intro do ARES, etc.) */
   .overlay h2 {
     font-family: var(--font-display);
     font-size: clamp(22px, 3.6vw, 36px);
@@ -191,6 +192,29 @@
   .lobby-colors-label .swatch { margin-left: 8px; vertical-align: middle; }
   .lobby-field { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 6px 0; }
   .lobby-field-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
+  /* Seleção de time */
+  #team-cols { display: flex; gap: 16px; margin: 16px 0; align-items: flex-start; justify-content: center; }
+  .team-col { min-width: 150px; border: 1px solid rgba(140,160,180,.25); border-radius: var(--radius); padding: 12px 14px; background: rgba(8,14,22,.5); }
+  .team-col h3 { font-family: var(--font-display); font-size: 16px; letter-spacing: .1em; margin-bottom: 10px; text-transform: uppercase; }
+  .ts-title-a { color: hsl(205,100%,66%); } .ts-title-b { color: hsl(28,100%,60%); } .ts-title-n { color: #9fb3c0; }
+  .ts-slot { display: flex; flex-direction: column; gap: 8px; min-height: 44px; }
+  .ts-token { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid rgba(25,224,255,.25); border-radius: var(--radius); background: rgba(8,14,22,.6); font-family: var(--font-display); font-size: 14px; letter-spacing: .04em; }
+  .ts-token.ai { opacity: .65; }
+  .ts-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+  .ts-hint { margin-left: auto; font-size: 11px; color: #6fa8bd; letter-spacing: .08em; }
+  /* Seletor de modo de jogo (lobby) — dois botões de retângulo arredondado */
+  .mode-seg { display: flex; align-items: center; gap: 12px; margin: 6px auto 14px; padding: 4px; border-radius: var(--radius); }
+  .mode-seg.nav-focus { outline: none; box-shadow: 0 0 0 2px rgba(25,224,255,.5); }
+  .mode-seg-label { font-size: 12px; color: #6fa8bd; letter-spacing: .16em; text-transform: uppercase; }
+  .mode-seg .seg { display: inline-flex; gap: 8px; }
+  .mode-opt { padding: 9px 18px; font-family: var(--font-display); font-size: 14px; letter-spacing: .06em; color: #9fb3c0; background: rgba(8,14,22,.6); border: none; outline: none; border-radius: var(--radius); cursor: pointer; transition: color .15s, background .15s, box-shadow .15s; }
+  .mode-opt:hover { color: #e6f2f7; }
+  .mode-opt.active { color: #041018; font-weight: 700; }
+  #mode-ffa.active { background: hsl(var(--ffa-h,190),100%,60%); box-shadow: 0 0 18px hsla(var(--ffa-h,190),100%,60%,.55); }
+  /* Times: metade cor do Time A, metade cor do Time B (corte reto, sem transição) */
+  #mode-teams.active {
+    background: linear-gradient(90deg, hsl(var(--a-h,205),100%,60%) 0 50%, hsl(var(--b-h,28),100%,58%) 50% 100%);
+    box-shadow: 0 0 16px hsla(var(--a-h,205),100%,60%,.4), 0 0 16px hsla(var(--b-h,28),100%,58%,.4); }
   .text-input {
     font-family: var(--font-display); font-size: 18px; color: #eaf6ff; text-align: center; letter-spacing: .04em;
     background: rgba(8,14,22,.7); border: 1px solid rgba(25,224,255,.4); border-radius: var(--radius);
@@ -555,21 +579,28 @@
 
   <!-- Lobby da sessão LAN -->
   <div id="lobby" class="overlay hidden">
-    <h2 style="color:#cdd9e6">Lobby</h2>
+    <h2 style="color:#cdd9e6" id="lobby-title">Lobby</h2>
     <p id="lobby-status" style="font-size:13px;color:#6fa8bd;letter-spacing:.06em;">Aguardando jogadores…</p>
+    <div class="mode-seg" id="mode-seg" role="group" aria-label="Modo de jogo">
+      <span class="mode-seg-label">Modo</span>
+      <span class="seg">
+        <button class="mode-opt active" id="mode-ffa">Mata-Mata</button>
+        <button class="mode-opt" id="mode-teams">Times</button>
+      </span>
+    </div>
     <div id="lobby-players"></div>
-    <div class="lobby-field">
+    <div class="lobby-field" id="lobby-name-field">
       <span class="lobby-field-label">Seu nome</span>
       <input id="lobby-name" class="text-input" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Jogador" />
     </div>
-    <div class="lobby-colors">
+    <div class="lobby-colors" id="lobby-colors">
       <span class="lobby-colors-label">Sua cor <span class="swatch" id="lobby-swatch"></span></span>
       <input type="range" id="lobby-hue" class="hue" min="0" max="360" value="190" />
     </div>
     <div class="btns">
       <button id="btn-lobby-ready">Pronto</button>
       <button id="btn-lobby-options" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/></svg>Opções</button>
-      <button id="btn-lobby-leave" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Sair <span class="hotkey">Esc</span></button>
+      <button id="btn-lobby-leave" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg><span class="btn-label">Sair</span> <span class="hotkey">Esc</span></button>
     </div>
   </div>
 
@@ -616,14 +647,6 @@
           <span class="step-val" id="diff-val">2</span>
           <button class="step-btn" id="diff-inc">+</button>
           <span class="adv-aux" id="diff-aux">médio</span>
-        </div>
-      </div>
-      <div class="adv-ctl">
-        <span class="adv-label">Modo</span>
-        <div class="stepper">
-          <button class="step-btn" id="gm-dec">−</button>
-          <span class="step-val" id="gm-val" style="font-size:14px;">Todos vs Todos</span>
-          <button class="step-btn" id="gm-inc">+</button>
         </div>
       </div>
     </div>
@@ -729,6 +752,17 @@
   </div>
 
   <!-- Painel de resultado -->
+  <!-- Seleção de time (modo Times) -->
+  <div id="team-select" class="overlay hidden">
+    <h2 style="color:#cdd9e6">Escolha o time</h2>
+    <p style="font-size:13px;color:#6fa8bd;letter-spacing:.06em;">Mova pra esquerda (Time A) ou direita (Time B) · <kbd>Enter</kbd> começa</p>
+    <div id="team-cols">
+      <div class="team-col"><h3 class="ts-title-a">Time A</h3><div class="ts-slot" id="team-col-a"></div></div>
+      <div class="team-col"><h3 class="ts-title-n">Neutro</h3><div class="ts-slot" id="team-col-neutral"></div></div>
+      <div class="team-col"><h3 class="ts-title-b">Time B</h3><div class="ts-slot" id="team-col-b"></div></div>
+    </div>
+  </div>
+
   <!-- Menu de pausa (Esc durante a partida) -->
   <div id="pause-menu" class="overlay hidden">
     <h2 id="pause-title" style="color:#cdd9e6">Pausado</h2>
