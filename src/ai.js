@@ -36,10 +36,10 @@ const KILL_THRESHOLD = 30;  // se um movimento deixa o oponente com <= isto de e
 const CUT_GAIN_MIN = 60;    // corte situacional só dispara se sufocar o oponente em pelo menos isto a mais que o melhor
 const WALL_HUG_BONUS = 4;   // (isolado) bônus por encostar em parede/rastro — preenche o espaço sem fragmentar
 const FILL_TURN_FACTOR = 0.35; // (isolado) fração do TURN_PENALTY — curva mais livre p/ serpentear e preencher
-// Ajuste só de VIOLÊNCIA ALTA (ARES): "aggro" = 0 pra violence<=0.6 (normal intocado), 1 em violence=1.0.
+// Ajuste só de VIOLÊNCIA ALTA (ARES): "violenceRamp" = 0 pra violence<=0.6 (normal intocado), 1 em violence=1.0.
 // Serve pra tirar o excesso de curvas do ARES sem mexer no modo normal.
-const AGGRO_TURN_EXTRA = 0.4;  // ARES: penalidade de curva extra (effTurn = TURN_PENALTY*(1+isto*aggro))
-const CUT_TURN_BIAS = 30;      // ARES: vies que faz o corte preferir reto (×aggro) — curva no corte só se valer mais
+const VIOLENCE_TURN_EXTRA = 0.4;  // ARES: penalidade de curva extra (effTurn = TURN_PENALTY*(1+isto*violenceRamp))
+const CUT_TURN_BIAS = 30;      // ARES: vies que faz o corte preferir reto (×violenceRamp) — curva no corte só se valer mais
 
 // BFS multi-fonte a partir da cabeça do bot (myX,myY) E das cabeças oponentes ao
 // mesmo tempo. Cada célula livre fica com quem chega primeiro; empate de distância
@@ -152,9 +152,9 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
   // SOBREVIVÊNCIA: esquece o ataque, maximiza o espaço próprio e gruda nas paredes
   // pra preencher a região sem fragmentá-la (vence mais finais).
   const isolated = !hasOpp || !cand.some(c => c.reachable);
-  // só o ARES (violence alto) curva menos: aggro = 0 no normal (<=0.6) e 1 no ARES (1.0)
-  const aggro = Math.max(0, (violence - 0.6) / 0.4);
-  const effTurn = TURN_PENALTY * (1 + AGGRO_TURN_EXTRA * aggro);
+  // só o ARES (violence alto) curva menos: violenceRamp = 0 no normal (<=0.6) e 1 no ARES (1.0)
+  const violenceRamp = Math.max(0, (violence - 0.6) / 0.4);
+  const effTurn = TURN_PENALTY * (1 + VIOLENCE_TURN_EXTRA * violenceRamp);
 
   for (const c of cand) {
     let score;
@@ -187,7 +187,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     // #4 ARES perto do combate: minimax 2-ply (maximin). Escolhe o movimento de
     // MELHOR pior-caso entre os candidatos seguros — arma cercos e não anda pra
     // dentro de armadilha. Substitui o corte aleatório quando ligado (jogo planejado).
-    if (aggro > 0 && oppDist <= LOOKAHEAD_RANGE && nearestOpp) {
+    if (violenceRamp > 0 && oppDist <= LOOKAHEAD_RANGE && nearestOpp) {
       let otherHeads = EMPTY_HEADS;
       if (oppHeads.length > 1) {                                    // multi-oponente: os demais entram como heads estáticos
         otherHeads = [];
@@ -207,7 +207,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
     const best = cand[0];
     let cut = null, cutCost = Infinity;
     for (const c of cand) if (c.mine >= MIN_SAFE_SPACE && c.reachable) {
-      const cost = c.theirs + (c.isTurn ? CUT_TURN_BIAS * aggro : 0);   // ARES prefere cortes RETOS (curva só se valer muito mais)
+      const cost = c.theirs + (c.isTurn ? CUT_TURN_BIAS * violenceRamp : 0);   // ARES prefere cortes RETOS (curva só se valer muito mais)
       if (cost < cutCost) { cutCost = cost; cut = c; }
     }
     const cutChance = clamp(0.08 + violence * 0.35, 0, 0.55);
