@@ -15,7 +15,7 @@ import { state } from "./state.js";
 import { renderer, audio, music } from "./engines.js";
 import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./colors.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./settings.js";
-import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, refreshNav } from "./menu-nav.js";
+import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./ares-intro.js";
 import { initInput, setLanSteer, setTeamSelect } from "./input.js";
 import { playIntro, skipIntro } from "./title-intro.js";
@@ -650,7 +650,7 @@ function toggleReady() {
 function registerLobbyNav() {
   const nav = [];
   if (lobbyKind === "local" || lanState.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
-  if (lobbyKind === "lan") nav.push(navSlider(el.lobbyHue, 8));
+  if (lobbyKind === "lan") { nav.push(navInput(el.lobbyName)); nav.push(navSlider(el.lobbyHue, 8)); }   // nome navegável por teclado (Enter edita)
   nav.push(navBtn("btn-lobby-ready"));
   if (lobbyKind === "local" || lanState.isHost) nav.push(navBtn("btn-lobby-options"));
   nav.push(navBtn("btn-lobby-leave"));
@@ -1002,6 +1002,7 @@ function wireControls() {
   el.btnLobbyOptions.addEventListener("click", lobbyOptions);
   el.lobbyHue.addEventListener("input", lobbyHueInput);
   el.lobbyName.addEventListener("input", lobbyNameInput);
+  el.lobbyName.addEventListener("focus", () => syncNavTo(el.lobbyName));   // clicar/editar → realce da nav acompanha
   document.getElementById("btn-options").addEventListener("click", openOptions);
   el.btnQuit.addEventListener("click", openQuitConfirm);
   document.getElementById("btn-quit-yes").addEventListener("click", quitApp);

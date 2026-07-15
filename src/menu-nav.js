@@ -21,6 +21,7 @@ export function navSlider(el, step) {
   };
 }
 export function navStepper(el, dec, inc) { return { el, type: "value", dec, inc }; }
+export function navInput(el) { return { el, type: "input", run: () => el.focus() }; }   // campo de texto: Enter entra em edição
 
 // ---- Registro ----
 export function registerMenu(overlayEl, navItems) {
@@ -44,18 +45,66 @@ function setIndex(i) {
   items[index].el.classList.add("nav-focus");
   audio.uiMove();
 }
-export function moveNav(delta) { setIndex(index + delta); }
+export function moveNav(delta) { setIndex(index + delta); }   // linear (compat / hover)
+
+// Centro (px de tela) de um item — base da navegação espacial.
+function itemCenter(it) { const r = it.el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+
+// Navegação ESPACIAL: vai pro item mais próximo NA DIREÇÃO pedida (não pela ordem
+// da lista). Assim uma grade 2x2 anda pro vizinho de fato (lado/cima/baixo).
+export function navMove(dir) {
+  if (!items || items.length < 2) return;
+  const c = itemCenter(items[index]);
+  const horiz = dir === "left" || dir === "right";
+  const sign = (dir === "right" || dir === "down") ? 1 : -1;
+  let best = -1, bestScore = Infinity;
+  for (let i = 0; i < items.length; i++) {
+    if (i === index) continue;
+    const p = itemCenter(items[i]);
+    const along = (horiz ? p.x - c.x : p.y - c.y) * sign;   // >0 = está na direção pedida
+    if (along <= 1) continue;
+    const perp = horiz ? Math.abs(p.y - c.y) : Math.abs(p.x - c.x);
+    const score = along + perp * 2;                          // perto na direção + bem alinhado
+    if (score < bestScore) { bestScore = score; best = i; }
+  }
+  if (best < 0) best = navWrapIndex(dir, c, horiz, sign);    // nada na direção → dá a volta pelo extremo oposto
+  if (best >= 0) setIndex(best);
+}
+function navWrapIndex(dir, c, horiz, sign) {
+  let ext = null;
+  for (let i = 0; i < items.length; i++) {
+    if (i === index) continue;
+    const a = horiz ? itemCenter(items[i]).x : itemCenter(items[i]).y;
+    if (ext === null || (sign > 0 ? a < ext : a > ext)) ext = a;   // extremo oposto ao movimento
+  }
+  if (ext === null) return -1;
+  let best = -1, bestPerp = Infinity;
+  for (let i = 0; i < items.length; i++) {
+    if (i === index) continue;
+    const p = itemCenter(items[i]);
+    if (Math.abs((horiz ? p.x : p.y) - ext) > 2) continue;   // só os do extremo
+    const perp = horiz ? Math.abs(p.y - c.y) : Math.abs(p.x - c.x);
+    if (perp < bestPerp) { bestPerp = perp; best = i; }       // mesmo linha/coluna (melhor alinhamento)
+  }
+  return best;
+}
 export function navHorizontal(delta) {
   const item = items && items[index];
   if (!item) return;
   if (item.type === "value") { (delta < 0 ? item.dec : item.inc)(); audio.uiMove(); }
-  else moveNav(delta);
+  else navMove(delta < 0 ? "left" : "right");
 }
 export function activateNav() {
   const item = items && items[index];
-  if (item && item.type === "button") item.run();
+  if (item && (item.type === "button" || item.type === "input")) item.run();
 }
 export function isNavActive() { return !!items; }   // há um menu navegável aberto?
+// Alinha o realce da navegação a um elemento que ganhou foco por fora (ex.: clicar no campo de nome).
+export function syncNavTo(el) {
+  if (!items) return;
+  const i = items.findIndex((it) => it.el === el);
+  if (i >= 0) setIndex(i);
+}
 
 // Mostra só o overlay `target` (ou nenhum) e ativa a navegação por teclado nele.
 export function showOnly(target) {

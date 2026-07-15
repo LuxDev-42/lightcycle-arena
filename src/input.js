@@ -5,7 +5,7 @@ import { state } from "./state.js";
 import { app } from "./app.js";
 import { audio, renderer, music } from "./engines.js";
 import { DIRS, OPPOSITE } from "./config.js";
-import { moveNav, navHorizontal, activateNav, isNavActive, refreshNav } from "./menu-nav.js";
+import { navMove, navHorizontal, activateNav, isNavActive, refreshNav } from "./menu-nav.js";
 
 const KEYMAP = {
   "w": [1, "up"], "a": [1, "left"], "s": [1, "down"], "d": [1, "right"],
@@ -81,8 +81,8 @@ function onKeyDown(event) {
   }
   if (isNavActive()) {   // navegação dos menus
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
-    if (key === "w" || key === "arrowup") { event.preventDefault(); moveNav(-1); }
-    else if (key === "s" || key === "arrowdown") { event.preventDefault(); moveNav(1); }
+    if (key === "w" || key === "arrowup") { event.preventDefault(); navMove("up"); }
+    else if (key === "s" || key === "arrowdown") { event.preventDefault(); navMove("down"); }
     else if (key === "a" || key === "arrowleft") { event.preventDefault(); navHorizontal(-1); }
     else if (key === "d" || key === "arrowright") { event.preventDefault(); navHorizontal(1); }
     else if (key === "enter" || key === " " || key === "spacebar") { event.preventDefault(); activateNav(); }
