@@ -94,6 +94,7 @@ export const el = {
   aresTerminalLines: $("ares-terminal-lines"),
   countdown: $("countdown"),
   countdownNum: $("countdown-num"),
+  nameplates: $("nameplates"),
   fade: $("fade"),
 
   // Intro (abertura)

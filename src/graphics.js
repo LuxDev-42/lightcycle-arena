@@ -430,6 +430,11 @@ export class Renderer {
     }
   }
 
+  // Converte coords de mundo → tela (CSS px) — pra posicionar UI (balões) sobre o canvas.
+  worldToScreen(wx, wy) {
+    return { x: (wx - this.camX) * this.camZoom + this.viewW / 2, y: (wy - this.camY) * this.camZoom + this.viewH / 2 };
+  }
+
   // Monitora o FPS durante o jogo e baixa a qualidade se ficar lento de forma
   // sustentada (ratchet: só desce, sem oscilar). 1º corta os FX caros, depois a resolução.
   _monitorPerf() {

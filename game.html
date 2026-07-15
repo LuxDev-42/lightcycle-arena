@@ -321,6 +321,21 @@
     position: fixed; inset: 0; z-index: 100;
     background: #fff; opacity: 0; pointer-events: none;
   }
+  /* Balões "quem é quem" — camada por cima de tudo (posicionada pelo JS) */
+  #nameplates { position: fixed; inset: 0; z-index: 120; pointer-events: none; opacity: 0; transition: opacity .12s linear; }
+  .nameplate { position: absolute; transform: translate(-50%, -100%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 9px 14px; border-radius: 10px; white-space: nowrap; font-family: var(--font-display);
+    background: rgba(6,12,20,0.93); border: 2px solid var(--pc, #19e0ff);
+    box-shadow: 0 0 16px var(--pc, #19e0ff), 0 3px 12px rgba(0,0,0,.55); }
+  .nameplate.below { transform: translate(-50%, 0); }
+  .nameplate .np-label { font-size: 20px; font-weight: 700; letter-spacing: .06em; color: #eaf6ff; text-shadow: 0 0 8px var(--pc, #19e0ff); }
+  .nameplate .np-keys { display: flex; gap: 5px; }
+  .nameplate .np-keys kbd { font-family: var(--font-display); font-size: 15px; font-weight: 700; min-width: 24px; padding: 4px 6px;
+    text-align: center; color: #cdeef7; background: rgba(25,224,255,0.12); border: 1px solid rgba(180,220,235,0.5); border-radius: 5px; box-shadow: none; }
+  .nameplate::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); width: 0; height: 0; border: 8px solid transparent; }
+  .nameplate:not(.below)::after { top: 100%; border-top-color: var(--pc, #19e0ff); }
+  .nameplate.below::after { bottom: 100%; border-bottom-color: var(--pc, #19e0ff); }
   /* ---- Intro (abertura) ---- */
   #intro {
     position: fixed; inset: 0; z-index: 90;
@@ -801,6 +816,7 @@
 
   <!-- Fade pra branco (fim do modo ARES) -->
   <div id="fade"></div>
+  <div id="nameplates"></div>
 
   <!-- Trilha sonora -->
   <audio id="bgm" preload="auto"></audio>

@@ -18,4 +18,5 @@ export const state = {
   introTimer: 0,            // título ARES na tela
   countdownTimer: 0,        // contagem 3-2-1
   countShown: -1,
+  nameplateTimer: 0,        // ms restantes dos balões "quem é quem" no início do round
 };

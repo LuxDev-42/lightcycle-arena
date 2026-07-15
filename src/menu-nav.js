@@ -52,22 +52,32 @@ function itemCenter(it) { const r = it.el.getBoundingClientRect(); return { x: r
 
 // Navegação ESPACIAL: vai pro item mais próximo NA DIREÇÃO pedida (não pela ordem
 // da lista). Assim uma grade 2x2 anda pro vizinho de fato (lado/cima/baixo).
+function overlap(a1, a2, b1, b2) { return Math.min(a2, b2) - Math.max(a1, b1); }   // >0 = faixas se sobrepõem
 export function navMove(dir) {
   if (!items || items.length < 2) return;
-  const c = itemCenter(items[index]);
+  const cur = items[index].el.getBoundingClientRect();
   const horiz = dir === "left" || dir === "right";
   const sign = (dir === "right" || dir === "down") ? 1 : -1;
+  const SLOP = 4;
   let best = -1, bestScore = Infinity;
   for (let i = 0; i < items.length; i++) {
     if (i === index) continue;
-    const p = itemCenter(items[i]);
-    const along = (horiz ? p.x - c.x : p.y - c.y) * sign;   // >0 = está na direção pedida
-    if (along <= 1) continue;
-    const perp = horiz ? Math.abs(p.y - c.y) : Math.abs(p.x - c.x);
-    const score = along + perp * 2;                          // perto na direção + bem alinhado
+    const r = items[i].el.getBoundingClientRect();
+    // distância na direção, medida entre as BORDAS (não centros)
+    const primary = dir === "right" ? r.left - cur.right
+      : dir === "left" ? cur.left - r.right
+      : dir === "down" ? r.top - cur.bottom
+      : cur.top - r.bottom;
+    if (primary < -SLOP) continue;                            // item não está nessa direção
+    // sobreposição na perpendicular (mesma "linha" p/ horizontal, mesma "coluna" p/ vertical)
+    const ov = horiz ? overlap(cur.top, cur.bottom, r.top, r.bottom)
+                     : overlap(cur.left, cur.right, r.left, r.right);
+    const perp = ov > 0 ? 0 : -ov;
+    // alinhado (perp 0) sempre vence desalinhado; entre iguais, o mais próximo na direção
+    const score = (perp > 0 ? 1e6 : 0) + Math.max(0, primary) + perp;
     if (score < bestScore) { bestScore = score; best = i; }
   }
-  if (best < 0) best = navWrapIndex(dir, c, horiz, sign);    // nada na direção → dá a volta pelo extremo oposto
+  if (best < 0) best = navWrapIndex(dir, itemCenter(items[index]), horiz, sign);   // nada na direção → dá a volta
   if (best >= 0) setIndex(best);
 }
 function navWrapIndex(dir, c, horiz, sign) {

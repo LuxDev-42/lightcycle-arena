@@ -3,7 +3,7 @@
 // Os subsistemas vivem em módulos próprios: dom, state, app, engines, colors,
 // settings, menu-nav, ares-intro, input. Aqui fica só a cola + o fluxo + o loop.
 import {
-  COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
+  CELL, COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
@@ -147,11 +147,79 @@ function resetRound() {
   prevAlive = state.players.map(() => true);
   prevTrailGone = state.players.map(() => false);
   windupFired = state.players.map(() => false);
+  setNameplates();                         // balões "quem é quem" (somem logo após o início)
   state.roundWinner = null;
   state.dyingTimer = 0;
   renderer.snapToTarget();
   renderScoreboard();
 }
+
+// Balões de identificação no início do round: quem é quem na arena. No local,
+// P1/P2 ganham a dica de controles (WASD / setas); no LAN, o nome de cada humano
+// (com "· você" no seu). Somem sozinhos (nameplateTimer no frame).
+const NAMEPLATE_MS = COUNTDOWN_MS + 600;   // dura a contagem + um respiro, com fade no fim
+function setNameplates() {
+  for (const p of state.players) { p.tag = null; p.tagKeys = null; }
+  if (lanRole) {
+    state.players.forEach((p, i) => { if (!p.isAI) p.tag = p.label + (i === lanState.mySlot ? " · você" : ""); });
+  } else if (state.mode === "2p") {
+    if (state.players[0]) { state.players[0].tag = "P1"; state.players[0].tagKeys = "wasd"; }
+    if (state.players[1]) { state.players[1].tag = "P2"; state.players[1].tagKeys = "arrows"; }
+  } else if (state.players[0]) {
+    state.players[0].tag = "Você"; state.players[0].tagKeys = "wasd";
+  }
+  state.nameplateTimer = NAMEPLATE_MS;
+  buildNameplates();
+}
+// Cria os elementos DOM dos balões (um por jogador com tag). Posicionados a cada frame.
+let nameplateEls = [];
+function buildNameplates() {
+  el.nameplates.innerHTML = "";
+  nameplateEls = [];
+  el.nameplates.style.opacity = "0";
+  state.players.forEach((p, i) => {
+    if (!p.tag) return;
+    const np = document.createElement("div");
+    np.className = "nameplate";
+    np.style.setProperty("--pc", p.color);
+    const label = document.createElement("div"); label.className = "np-label"; label.textContent = p.tag;
+    np.appendChild(label);
+    const keys = p.tagKeys === "wasd" ? ["W", "A", "S", "D"] : p.tagKeys === "arrows" ? ["↑", "←", "↓", "→"] : null;
+    if (keys) {
+      const row = document.createElement("div"); row.className = "np-keys";
+      for (const k of keys) { const kb = document.createElement("kbd"); kb.textContent = k; row.appendChild(kb); }
+      np.appendChild(row);
+    }
+    el.nameplates.appendChild(np);
+    nameplateEls.push({ el: np, i });
+  });
+}
+// Posiciona os balões a cada frame (segue a moto; filosofia select: vira pra baixo
+// se não couber em cima, e nunca sai da tela na horizontal). Some via opacidade.
+function updateNameplates() {
+  if (!nameplateEls.length) return;
+  // só durante uma partida de fato (nunca no menu/resultado/pausa) — evento explícito de renderização
+  const inMatch = app.running && !app.paused && (state.phase === "countdown" || state.phase === "playing" || state.phase === "dying");
+  if (!inMatch || state.nameplateTimer <= 0) { el.nameplates.style.opacity = "0"; return; }
+  el.nameplates.style.opacity = String(Math.min(1, state.nameplateTimer / 600));   // fade nos últimos 600ms
+  const vw = window.innerWidth;
+  for (const np of nameplateEls) {
+    const p = state.players[np.i];
+    if (!p || !p.alive) { np.el.style.display = "none"; continue; }
+    np.el.style.display = "";
+    const prog = p.progress || 0;
+    const wx = (p.prevX + (p.x - p.prevX) * prog + 0.5) * CELL;
+    const wy = (p.prevY + (p.y - p.prevY) * prog + 0.5) * CELL;
+    const s = renderer.worldToScreen(wx, wy);
+    const w = np.el.offsetWidth, h = np.el.offsetHeight;
+    const gap = 22, topMargin = 44;
+    const below = (s.y - gap - h) < topMargin;                           // pouco respiro no topo → vira pra baixo
+    np.el.classList.toggle("below", below);
+    np.el.style.left = Math.max(w / 2 + 6, Math.min(vw - w / 2 - 6, s.x)) + "px";   // clamp horizontal
+    np.el.style.top = (below ? s.y + gap : s.y - gap) + "px";
+  }
+}
+function hideNameplates() { if (el.nameplates) el.nameplates.style.opacity = "0"; }
 
 // ---- Placar dinâmico (chips/pílulas coloridas) ----
 function playerChip(p, winnerId) {
@@ -223,6 +291,7 @@ function frame(timestamp) {
 
   if (!app.paused) {
     updateParticles(state, dt);
+    if (state.nameplateTimer > 0) state.nameplateTimer -= dt;   // some com os balões "quem é quem"
     if (lanRole === "client") {
       /* partida LAN: o estado vem dos snapshots (lanApplySnapshot) — nada a simular aqui */
     } else if (state.phase === "aresintro") {
@@ -293,6 +362,7 @@ function frame(timestamp) {
   }
   audio.update(state, app.paused, pans);
   renderer.render(state);
+  updateNameplates();
   if (app.running) requestAnimationFrame(frame);
 }
 
@@ -385,6 +455,7 @@ function goMenu() {
   el.aresTerminal.classList.add("hidden");
   el.countdown.classList.add("hidden");
   resetRound();                            // limpa as trilhas (some o vermelho do ARES atrás do menu)
+  state.nameplateTimer = 0; hideNameplates();   // nada de balões no menu (o resetRound acima os rearma)
   renderer.updateCamera(state, 0);
   renderer.render(state);
   showOnly(el.menu);
@@ -834,6 +905,7 @@ function showVictory(champ) {
   state.phase = "result";
   app.running = false;
   hideTouchControls();
+  hideNameplates();
   audio.setEnginesActive(false);
   audio.victory();
   el.resultTitle.textContent = `${champ.label} venceu`;
@@ -850,6 +922,7 @@ function showVictoryTeam(team) {
   state.phase = "result";
   app.running = false;
   hideTouchControls();
+  hideNameplates();
   audio.setEnginesActive(false);
   audio.victory();
   const c = hueColor(TEAM_HUES[team]);
