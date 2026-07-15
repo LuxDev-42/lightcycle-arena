@@ -27,7 +27,7 @@ import {
 } from "./net/lan-client.js";
 import {
   openLobby, openLocalLobby, onModeChange, refreshModeSwatches, onLobbyReady, onLobbyLeave,
-  lobbyHueInput, lobbyNameInput, renderLobby, renderLocalRoster, lobbyKind, initLobby,
+  lobbyHueInput, lobbyNameInput, renderLobby, renderLocalRoster, onHumansStep, lobbyKind, initLobby,
 } from "./ui/lobby.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./ui/settings.js";
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./ui/menu-nav.js";
@@ -109,6 +109,7 @@ function defineSettings() {
     el.modeTeams.classList.toggle("active", v === 1);
     if (!app.running) state.gameMode = v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
   } });
+  defineSetting("localHumans", { ls: "lc.localHumans", def: 2, min: 2, max: 4, apply: (v) => { el.lhVal.textContent = v; } });
 }
 
 // ---- Roster / round ----
@@ -118,7 +119,8 @@ function configureRoster(mode) {
   state.mode = mode;
   state.difficulty = settings.difficulty;
   state.gameMode = (!state.ares && settings.gameMode === 1) ? "teams" : "ffa";   // ARES é sempre FFA
-  const humans = mode === "2p" ? 2 : 1;
+  const humans = mode === "2p" ? (settings.localHumans ?? 2) : 1;   // multiplayer local: 2-4 humanos
+  state.humans = humans;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
   const cpuCount = total - humans;
@@ -640,6 +642,8 @@ function wireControls() {
   document.getElementById("mp-inc").addEventListener("click", () => stepSetting("mpCpus", 1));
   document.getElementById("diff-dec").addEventListener("click", () => stepSetting("difficulty", -1));
   document.getElementById("diff-inc").addEventListener("click", () => stepSetting("difficulty", 1));
+  document.getElementById("lh-dec").addEventListener("click", () => onHumansStep(-1));
+  document.getElementById("lh-inc").addEventListener("click", () => onHumansStep(1));
   el.modeFfa.addEventListener("click", () => onModeChange(0));
   el.modeTeams.addEventListener("click", () => onModeChange(1));
 

@@ -114,6 +114,15 @@ function bindTurn(id, playerId, side) {
 const GP_DEADZONE = 0.55;
 const gpPrev = [];   // { dir, confirm, back } anterior por controle (detecta aperto novo)
 
+// Um jogador humano local (0-based) está sendo dirigido por um gamepad conectado?
+// Espelha o mapeamento do pollGamepads. Usado pelo balão "quem é quem".
+export function playerUsesGamepad(humanIndex) {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (state.mode === "cpu") return humanIndex === 0 && Array.from(pads).some(Boolean);
+  const padIndex = (state.humans || 2) <= 2 ? humanIndex : (humanIndex >= 2 ? humanIndex - 2 : -1);
+  return padIndex >= 0 && !!pads[padIndex];
+}
+
 function gamepadDir(gp) {
   const b = gp.buttons, ax = gp.axes;
   const held = (i) => b[i] && b[i].pressed;
@@ -138,7 +147,11 @@ function pollGamepads() {
     const backEdge = back && !prev.back;
     if (confirmEdge || backEdge) audio.resume();   // aperto = gesto: destrava o áudio
 
-    const pid = state.mode === "cpu" ? 1 : i + 1;
+    // controle → jogador: single = P1; ≤2 humanos = pad i → P(i+1); 3+ = teclado é P1/P2, pads viram P3/P4
+    let pid;
+    if (state.mode === "cpu") pid = 1;
+    else if ((state.humans || 2) <= 2) pid = i + 1;
+    else pid = i + 3;
     if (state.phase === "teamselect") {
       if (dirEdge && dir === "left") teamSelectFn && teamSelectFn(pid, 0);
       else if (dirEdge && dir === "right") teamSelectFn && teamSelectFn(pid, 1);

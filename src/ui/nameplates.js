@@ -7,28 +7,24 @@ import { app } from "../core/app.js";
 import { el } from "./dom.js";
 import { renderer } from "../engines.js";
 import { CELL, COUNTDOWN_MS } from "../core/config.js";
+import { playerUsesGamepad } from "../input/input.js";
 
 const NAMEPLATE_MS = COUNTDOWN_MS + 600;   // dura a contagem + um respiro, com fade no fim
 let nameplateEls = [];
-
-// Um jogador local está usando gamepad? (mesmo mapeamento do input: single = qualquer
-// controle guia o P1; 2p = controle 0→P1, 1→P2). Reavaliado a cada round.
-function gamepadForLocal(humanIndex) {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  if (state.mode === "cpu") return Array.from(pads).some(Boolean);
-  return !!pads[humanIndex];
-}
 
 // `lanLocalSlot`: índice do jogador local numa partida LAN; `null` no local (SP/MP local).
 export function setNameplates(lanLocalSlot = null) {
   for (const p of state.players) { p.tag = null; p.tagKeys = null; }
   if (lanLocalSlot != null) {
     state.players.forEach((p, i) => { if (!p.isAI) p.tag = p.label + (i === lanLocalSlot ? " · você" : ""); });
-  } else if (state.mode === "2p") {
-    if (state.players[0]) { state.players[0].tag = "P1"; state.players[0].tagKeys = gamepadForLocal(0) ? "gamepad" : "wasd"; }
-    if (state.players[1]) { state.players[1].tag = "P2"; state.players[1].tagKeys = gamepadForLocal(1) ? "gamepad" : "arrows"; }
-  } else if (state.players[0]) {
-    state.players[0].tag = "Você"; state.players[0].tagKeys = gamepadForLocal(0) ? "gamepad" : "wasd";
+  } else {   // local: cpu = "Você"; multiplayer local = P1..PN (teclado P1/P2; gamepad P3/P4)
+    const solo = state.mode === "cpu";
+    state.players.forEach((p, i) => {
+      if (p.isAI) return;
+      p.tag = solo ? "Você" : `P${i + 1}`;
+      // teclas do i-ésimo humano: P1=WASD, P2=setas, P3+ só gamepad; ou "controle" se num gamepad
+      p.tagKeys = playerUsesGamepad(i) ? "gamepad" : (i === 0 ? "wasd" : i === 1 ? "arrows" : "gamepad");
+    });
   }
   state.nameplateTimer = NAMEPLATE_MS;
   buildNameplates();

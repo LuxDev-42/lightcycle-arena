@@ -9,7 +9,7 @@ import { audio } from "../engines.js";
 import { el } from "./dom.js";
 import { hueColor, skinForIndex } from "./colors.js";
 import { TEAM_HUES } from "./teams.js";
-import { setSetting } from "./settings.js";
+import { setSetting, stepSetting } from "./settings.js";
 import { registerMenu, showOnly, navBtn, navSlider, navStepper, navInput } from "./menu-nav.js";
 import { setLanSteer } from "../input/input.js";
 import { lan, lanAvailable, currentMatchConfig, getProfileName, setProfileName, leaveLan } from "../net/lan-client.js";
@@ -50,6 +50,7 @@ function setLobbyKindUI() {
   el.lobbyNameField.style.display = isLan ? "" : "none";   // nome/cor de rede: só no LAN
   el.lobbyColors.style.display = isLan ? "" : "none";
   el.modeSeg.style.display = showMode ? "" : "none";
+  el.lobbyHumans.style.display = (!isLan && state.mode !== "cpu") ? "" : "none";   // nº de humanos: só no multiplayer local
   el.btnLobbyOptions.style.display = showMode ? "" : "none";
   el.btnLobbyReady.textContent = isLan ? "Pronto" : "Começar";
   el.btnLobbyLeave.querySelector(".btn-label").textContent = isLan ? "Sair" : "Voltar";
@@ -82,6 +83,7 @@ export function refreshModeSwatches() {   // pílulas de modo herdam as cores re
   el.modeTeams.style.setProperty("--a-h", TEAM_HUES[0]);
   el.modeTeams.style.setProperty("--b-h", TEAM_HUES[1]);
 }
+export function onHumansStep(d) { stepSetting("localHumans", d); renderLocalRoster(); }   // muda o nº de humanos e atualiza o preview
 export function onLobbyReady() { if (lobbyKind === "local") deps.startMatch(state.mode); else toggleReady(); }
 export function onLobbyLeave() {
   if (lobbyKind === "local") { audio.uiBack(); showOnly(state.mode === "2p" ? el.multiplayerMenu : el.menu); }
@@ -116,6 +118,7 @@ function toggleReady() {
 function registerLobbyNav() {
   const nav = [];
   if (lobbyKind === "local" || lan.state.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
+  if (lobbyKind === "local" && state.mode !== "cpu") nav.push(navStepper(el.lhVal.closest(".stepper"), () => onHumansStep(-1), () => onHumansStep(1)));
   if (lobbyKind === "lan") { nav.push(navInput(el.lobbyName)); nav.push(navSlider(el.lobbyHue, 8)); }   // nome navegável por teclado (Enter edita)
   nav.push(navBtn("btn-lobby-ready"));
   if (lobbyKind === "local" || lan.state.isHost) nav.push(navBtn("btn-lobby-options"));

@@ -5,7 +5,8 @@ export const state = {
   arenaLayout: [],          // obstáculos da partida (escolhido em Opções > Mapas)
   players: null,
   particles: [],
-  mode: "cpu",              // "cpu" (1 humano) | "2p" (2 humanos)
+  mode: "cpu",              // "cpu" (1 humano, vs CPU) | "2p" (multiplayer local, 2-4 humanos)
+  humans: 1,                // nº de jogadores humanos locais (1 no cpu; 2-4 no multiplayer local)
   gameMode: "ffa",          // "ffa" (todos contra todos) | "teams" (times)
   roster: [],               // [{ isAI, label, team }]
   phase: "menu",            // "menu" | "aresintro" | "countdown" | "playing" | "dying" | "result" | "fade"

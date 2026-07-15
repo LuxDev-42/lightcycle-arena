@@ -36,6 +36,8 @@ export const el = {
   lobbyStatus: $("lobby-status"),
   lobbyNameField: $("lobby-name-field"),
   lobbyColors: $("lobby-colors"),
+  lobbyHumans: $("lobby-humans"),
+  lhVal: $("lh-val"),
   lobbyPlayers: $("lobby-players"),
   lobbyHue: $("lobby-hue"),
   lobbySwatch: $("lobby-swatch"),
