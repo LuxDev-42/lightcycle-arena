@@ -1,7 +1,8 @@
-// Orquestrador: cria o estado, define settings/menus, conecta o input e roda o
-// game loop, costurando os módulos (lógica, IA via lógica, gráficos, áudio).
-// Os subsistemas vivem em módulos próprios: dom, state, app, engines, colors,
-// settings, menu-nav, ares-intro, input. Aqui fica só a cola + o fluxo + o loop.
+// Orquestrador do jogo: cria o estado, define settings/menus, conecta o input e roda
+// o game loop. Os subsistemas vivem em módulos próprios sob src/ (core, render, audio,
+// ui, input, intro, net); aqui fica só a cola + o fluxo + o loop. LAN (net/lan-client)
+// e lobby (ui/lobby) são desacoplados por injeção: recebem os callbacks daqui via
+// initLan/initLobby e não importam este arquivo.
 import {
   COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
@@ -162,10 +163,6 @@ function resetRound() {
   renderScoreboard();
 }
 
-// Balões de identificação no início do round: quem é quem na arena. No local,
-// P1/P2 ganham a dica de controles (WASD / setas); no LAN, o nome de cada humano
-// (com "· você" no seu). Somem sozinhos (nameplateTimer no frame).
-
 // ---- Contagem ----
 function beginCountdown(fromAres) {
   state.phase = "countdown";
@@ -181,10 +178,10 @@ function beginCountdown(fromAres) {
   showTouchControls();   // HUD de pilotagem entra junto com a contagem (só em telas de toque)
 }
 function updateCountdown() {
-  const n = Math.max(1, Math.ceil(state.countdownTimer / 1000));   // 3, 2, 1
-  if (n !== state.countShown) {
-    state.countShown = n;
-    el.countdownNum.textContent = n;
+  const seconds = Math.max(1, Math.ceil(state.countdownTimer / 1000));   // 3, 2, 1
+  if (seconds !== state.countShown) {
+    state.countShown = seconds;
+    el.countdownNum.textContent = seconds;
     el.countdownNum.style.animation = "none";
     void el.countdownNum.offsetWidth;          // reinicia a animação
     el.countdownNum.style.animation = "count-pop .4s ease";
@@ -249,9 +246,9 @@ function frame(timestamp) {
       for (let i = 0; i < state.players.length; i++) {
         const p = state.players[i];
         if (p.isAI || !p.alive) continue;
-        const hk = p.y * COLS + p.x;
-        if (hk === lastHeadKey[i]) continue;           // só dispara quando anda uma célula
-        lastHeadKey[i] = hk;
+        const headKey = p.y * COLS + p.x;
+        if (headKey === lastHeadKey[i]) continue;      // só dispara quando anda uma célula
+        lastHeadKey[i] = headKey;
         if (stepTickCd <= 0) { audio.moveTick(renderer.screenPan(p), p.tickMs); stepTickCd = STEPTICK_MIN_MS; }
         if (nearMissCd <= 0) {                          // parede/rastro logo ao lado (perpendicular ao rumo)?
           const d = DIRS[p.dir];
@@ -346,11 +343,11 @@ function renderTeamSelect() {
   state.roster.forEach((r, i) => {
     const col = r.team === 0 ? el.teamColA : r.team === 1 ? el.teamColB : el.teamColNeutral;
     const hue = r.team === 0 ? TEAM_HUES[0] : r.team === 1 ? TEAM_HUES[1] : 210;
-    const t = document.createElement("div");
-    t.className = "ts-token" + (r.isAI ? " ai" : "");
-    t.innerHTML = `<span class="ts-dot" style="background:hsl(${hue},100%,62%);box-shadow:0 0 8px hsl(${hue},100%,62%)"></span>`
+    const token = document.createElement("div");
+    token.className = "ts-token" + (r.isAI ? " ai" : "");
+    token.innerHTML = `<span class="ts-dot" style="background:hsl(${hue},100%,62%);box-shadow:0 0 8px hsl(${hue},100%,62%)"></span>`
       + `<span>${r.label}</span>` + (r.isAI ? "" : `<span class="ts-hint">${i === 0 ? "A / D" : "← / →"}</span>`);
-    col.appendChild(t);
+    col.appendChild(token);
   });
 }
 
@@ -434,8 +431,6 @@ function openLan()           { showOnly(el.lanMenu); }
 function backToMultiplayer() { showOnly(el.multiplayerMenu); }
 function backToLan()         { showOnly(el.lanMenu); }
 function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
-
-
 
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
 function endRound() {
