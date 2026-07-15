@@ -3,7 +3,7 @@
 // Os subsistemas vivem em módulos próprios: dom, state, app, engines, colors,
 // settings, menu-nav, ares-intro, input. Aqui fica só a cola + o fluxo + o loop.
 import {
-  CELL, COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
+  COLS, DIRS, OPPOSITE, createGrid, idx, isFree,
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
@@ -14,6 +14,11 @@ import { app } from "./core/app.js";
 import { state } from "./core/state.js";
 import { renderer, audio, music } from "./engines.js";
 import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./ui/colors.js";
+import { TEAM_HUES, teamSkin } from "./ui/teams.js";
+import { renderScoreboard, scoreChips, teamScoreChips } from "./ui/scoreboard.js";
+import { setNameplates, updateNameplates, hideNameplates } from "./ui/nameplates.js";
+import { toggleFullscreen, syncFullscreenLabel } from "./ui/fullscreen.js";
+import { buildSoundTests, soundTestNav } from "./ui/sound-tests.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./ui/settings.js";
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./ui/menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./intro/ares-intro.js";
@@ -98,12 +103,6 @@ function defineSettings() {
 
 // ---- Roster / round ----
 // Monta o roster a partir do modo + nº de CPUs (ARES força 1 CPU).
-const TEAM_HUES = [205, 28];   // Time A (azul-ciano), Time B (laranja)
-function teamSkin(team, idx) {
-  const base = TEAM_HUES[team] ?? 205;
-  const h = (base + (idx % 4) * 8) % 360;   // leve variação pra distinguir companheiros do mesmo time
-  return { color: hueColor(h), glow: hueGlow(h), hue: h };
-}
 
 function configureRoster(mode) {
   state.mode = mode;
@@ -147,7 +146,7 @@ function resetRound() {
   prevAlive = state.players.map(() => true);
   prevTrailGone = state.players.map(() => false);
   windupFired = state.players.map(() => false);
-  setNameplates();                         // balões "quem é quem" (somem logo após o início)
+  setNameplates(lanRole ? lanState.mySlot : null);   // balões "quem é quem" (somem logo após o início)
   state.roundWinner = null;
   state.dyingTimer = 0;
   renderer.snapToTarget();
@@ -157,98 +156,6 @@ function resetRound() {
 // Balões de identificação no início do round: quem é quem na arena. No local,
 // P1/P2 ganham a dica de controles (WASD / setas); no LAN, o nome de cada humano
 // (com "· você" no seu). Somem sozinhos (nameplateTimer no frame).
-const NAMEPLATE_MS = COUNTDOWN_MS + 600;   // dura a contagem + um respiro, com fade no fim
-function setNameplates() {
-  for (const p of state.players) { p.tag = null; p.tagKeys = null; }
-  if (lanRole) {
-    state.players.forEach((p, i) => { if (!p.isAI) p.tag = p.label + (i === lanState.mySlot ? " · você" : ""); });
-  } else if (state.mode === "2p") {
-    if (state.players[0]) { state.players[0].tag = "P1"; state.players[0].tagKeys = "wasd"; }
-    if (state.players[1]) { state.players[1].tag = "P2"; state.players[1].tagKeys = "arrows"; }
-  } else if (state.players[0]) {
-    state.players[0].tag = "Você"; state.players[0].tagKeys = "wasd";
-  }
-  state.nameplateTimer = NAMEPLATE_MS;
-  buildNameplates();
-}
-// Cria os elementos DOM dos balões (um por jogador com tag). Posicionados a cada frame.
-let nameplateEls = [];
-function buildNameplates() {
-  el.nameplates.innerHTML = "";
-  nameplateEls = [];
-  el.nameplates.style.opacity = "0";
-  state.players.forEach((p, i) => {
-    if (!p.tag) return;
-    const np = document.createElement("div");
-    np.className = "nameplate";
-    np.style.setProperty("--pc", p.color);
-    const label = document.createElement("div"); label.className = "np-label"; label.textContent = p.tag;
-    np.appendChild(label);
-    const keys = p.tagKeys === "wasd" ? ["W", "A", "S", "D"] : p.tagKeys === "arrows" ? ["↑", "←", "↓", "→"] : null;
-    if (keys) {
-      const row = document.createElement("div"); row.className = "np-keys";
-      for (const k of keys) { const kb = document.createElement("kbd"); kb.textContent = k; row.appendChild(kb); }
-      np.appendChild(row);
-    }
-    el.nameplates.appendChild(np);
-    nameplateEls.push({ el: np, i });
-  });
-}
-// Posiciona os balões a cada frame (segue a moto; filosofia select: vira pra baixo
-// se não couber em cima, e nunca sai da tela na horizontal). Some via opacidade.
-function updateNameplates() {
-  if (!nameplateEls.length) return;
-  // só durante uma partida de fato (nunca no menu/resultado/pausa) — evento explícito de renderização
-  const inMatch = app.running && !app.paused && (state.phase === "countdown" || state.phase === "playing" || state.phase === "dying");
-  if (!inMatch || state.nameplateTimer <= 0) { el.nameplates.style.opacity = "0"; return; }
-  el.nameplates.style.opacity = String(Math.min(1, state.nameplateTimer / 600));   // fade nos últimos 600ms
-  const vw = window.innerWidth;
-  for (const np of nameplateEls) {
-    const p = state.players[np.i];
-    if (!p || !p.alive) { np.el.style.display = "none"; continue; }
-    np.el.style.display = "";
-    const prog = p.progress || 0;
-    const wx = (p.prevX + (p.x - p.prevX) * prog + 0.5) * CELL;
-    const wy = (p.prevY + (p.y - p.prevY) * prog + 0.5) * CELL;
-    const s = renderer.worldToScreen(wx, wy);
-    const w = np.el.offsetWidth, h = np.el.offsetHeight;
-    const gap = 22, topMargin = 44;
-    const below = (s.y - gap - h) < topMargin;                           // pouco respiro no topo → vira pra baixo
-    np.el.classList.toggle("below", below);
-    np.el.style.left = Math.max(w / 2 + 6, Math.min(vw - w / 2 - 6, s.x)) + "px";   // clamp horizontal
-    np.el.style.top = (below ? s.y + gap : s.y - gap) + "px";
-  }
-}
-function hideNameplates() { if (el.nameplates) el.nameplates.style.opacity = "0"; }
-
-// ---- Placar dinâmico (chips/pílulas coloridas) ----
-function playerChip(p, winnerId) {
-  const h = p.hue, win = p.id === winnerId;
-  const glow = `0 0 12px hsla(${h},100%,60%,.35)` + (win ? `, 0 0 26px hsla(${h},100%,60%,.6)` : "");
-  return `<span class="chip${win ? " win" : ""}" style="border-color:hsl(${h},100%,62%);`
-    + `background:hsla(${h},100%,55%,.12);box-shadow:${glow}">`
-    + `<span class="chip-dot" style="background:hsl(${h},100%,62%);box-shadow:0 0 8px hsl(${h},100%,62%)"></span>`
-    + `<span class="chip-name" style="color:hsl(${h},100%,74%)">${p.label}</span>`
-    + `<span class="chip-score">${state.scores[p.id - 1]}</span>`
-    + `</span>`;
-}
-function teamChip(team, winTeam) {
-  const h = TEAM_HUES[team], win = team === winTeam;
-  const glow = `0 0 12px hsla(${h},100%,60%,.35)` + (win ? `, 0 0 26px hsla(${h},100%,60%,.6)` : "");
-  return `<span class="chip${win ? " win" : ""}" style="border-color:hsl(${h},100%,62%);`
-    + `background:hsla(${h},100%,55%,.12);box-shadow:${glow}">`
-    + `<span class="chip-dot" style="background:hsl(${h},100%,62%);box-shadow:0 0 8px hsl(${h},100%,62%)"></span>`
-    + `<span class="chip-name" style="color:hsl(${h},100%,74%)">Time ${team === 0 ? "A" : "B"}</span>`
-    + `<span class="chip-score">${state.teamScores[team]}</span></span>`;
-}
-function teamScoreChips(winTeam = -1) { return teamChip(0, winTeam) + teamChip(1, winTeam); }
-function scoreChips(winnerId = null) {
-  return state.players.map(p => playerChip(p, winnerId)).join("");
-}
-function renderScoreboard() {
-  if (!state.players) return;
-  el.scoreboard.innerHTML = state.gameMode === "teams" ? teamScoreChips() : scoreChips();
-}
 
 // ---- Contagem ----
 function beginCountdown(fromAres) {
@@ -858,27 +765,6 @@ if (window.lan) window.lan.on((msg) => {
   else if (msg.type === "disconnect") { if (lanState.active && !lanState.isHost) lanHostLeft(); }   // host caiu → migração/rediscovery
 });
 
-// ---- Tela cheia (toggle no menu de gráficos) ----
-// No app (Electron) usa o fullscreen NATIVO da janela: abre em tela cheia por default
-// e o ESC NÃO sai dela — fica livre pro "voltar/pausar" do jogo. No browser cai na
-// Fullscreen API padrão (onde o ESC sai, sem como evitar).
-function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
-function setFsSwitch(on) {
-  el.btnFullscreen.classList.toggle("on", !!on);     // bolinha p/ a direita quando ligado
-  el.btnFullscreen.setAttribute("aria-checked", on ? "true" : "false");
-}
-async function toggleFullscreen() {
-  if (window.electronFS) { setFsSwitch(await window.electronFS.toggle()); return; }
-  if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
-  const r = document.documentElement;
-  const p = (r.requestFullscreen || r.webkitRequestFullscreen)?.call(r);
-  if (p && p.catch) p.catch(() => {});
-}
-async function syncFullscreenLabel() {
-  if (window.electronFS) { setFsSwitch(await window.electronFS.isFullscreen()); return; }
-  setFsSwitch(!!fsElement());
-}
-
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
 function endRound() {
   if (state.gameMode === "teams") {
@@ -992,35 +878,6 @@ function showTouchControls() {
 function hideTouchControls() { el.touchControls.classList.remove("active"); }
 
 // ---- Registro de menus (cada um: overlay + itens navegáveis) ----
-// Botões de teste de SFX (submenu Sons, debug) — gerados a partir da lista de sons da engine.
-const soundTestNav = [];
-function buildSoundTests() {
-  const tests = [
-    ["de-rez windup", () => audio.derezWindup()],
-    ["de-rez pop", () => audio.trailDerez()],
-    ["explosão", () => audio.explosion()],
-    ["near-miss", () => audio.nearMiss()],
-    ["move tick", () => audio.moveTick()],
-    ["erro", () => audio.error()],
-    ["contagem 3-2-1", () => audio.tick(false)],
-    ["contagem GO", () => audio.tick(true)],
-    ["vitória", () => audio.victory()],
-    ["empate", () => audio.draw()],
-    ["ARES stinger", () => audio.aresStinger()],
-    ["blip (início)", () => audio.blip()],
-    ["UI mover", () => audio.uiMove()],
-    ["UI selecionar", () => audio.uiSelect()],
-    ["UI voltar", () => audio.uiBack()],
-  ];
-  for (const [label, play] of tests) {
-    const b = document.createElement("button");
-    b.className = "neutral snd-test";
-    b.textContent = label;
-    b.addEventListener("click", () => { audio.resume(); play(); });
-    el.soundList.appendChild(b);
-    soundTestNav.push({ el: b, type: "button", run: () => b.click() });
-  }
-}
 
 function buildNav() {
   registerMenu(el.menu, [navBtn("btn-cpu"), navBtn("btn-multiplayer"), navBtn("btn-options"), navBtn("btn-quit")]);
