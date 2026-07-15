@@ -4,7 +4,7 @@
 // vazia, cai na varredura do diretório (precisa de listagem HTTP, p.ex. Live Server).
 //   music/            -> trilha normal
 //   music/dangerMusic -> trilha do modo ARES
-import { MUSIC_DIR, MENU_TRACK, MUSIC_DANGER_DIR, MUSIC_EXTS, MUSIC_TRACKS, MUSIC_DANGER_TRACKS } from "./config.js";
+import { MUSIC_DIR, MENU_TRACK, MUSIC_DANGER_DIR, MUSIC_EXTS, MUSIC_TRACKS, MUSIC_DANGER_TRACKS } from "../core/config.js";
 
 function isAudio(href) {
   const h = href.toLowerCase();

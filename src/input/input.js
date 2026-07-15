@@ -1,11 +1,11 @@
 // Input do jogador: teclado (WASD / setas) + toque (botões de virar). Converte
 // tudo em steer() sobre o jogador humano. A navegação de menu é delegada ao
 // menu-nav; o único callback de fluxo injetado é onEscape (sair/voltar).
-import { state } from "./state.js";
-import { app } from "./app.js";
-import { audio, renderer, music } from "./engines.js";
-import { DIRS, OPPOSITE } from "./config.js";
-import { navMove, navHorizontal, activateNav, isNavActive, refreshNav } from "./menu-nav.js";
+import { state } from "../core/state.js";
+import { app } from "../core/app.js";
+import { audio, renderer, music } from "../engines.js";
+import { DIRS, OPPOSITE } from "../core/config.js";
+import { navMove, navHorizontal, activateNav, isNavActive, refreshNav } from "../ui/menu-nav.js";
 
 const KEYMAP = {
   "w": [1, "up"], "a": [1, "left"], "s": [1, "down"], "d": [1, "right"],

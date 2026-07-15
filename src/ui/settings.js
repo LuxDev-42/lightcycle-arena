@@ -2,7 +2,7 @@
 // definido uma vez com { ls, def, min, max, vol, apply }; o registry cuida de
 // carregar, validar/clampar, salvar e chamar apply(valor) (que faz UI + efeito).
 // Adicionar uma config nova = 1 defineSetting + o stepper/slider no HTML.
-import { clamp } from "./config.js";
+import { clamp } from "../core/config.js";
 
 function load(key, def, min, max, vol) {
   try {

@@ -2,10 +2,10 @@
 // segura um beat e então mostra a tela "ARES invadiu o sistema" (e só aí começa
 // a música/motores). O game loop (main) chama updateAresTerminal(dt) enquanto
 // isTerminalActive() e, quando acaba, segura introTimer e dispara a contagem.
-import { state } from "./state.js";
-import { el } from "./dom.js";
-import { audio, music } from "./engines.js";
-import { ARES_HOLD_MS } from "./config.js";
+import { state } from "../core/state.js";
+import { el } from "../ui/dom.js";
+import { audio, music } from "../engines.js";
+import { ARES_HOLD_MS } from "../core/config.js";
 
 const LINE_MS = 18;     // intervalo entre linhas do log (rápido, estilo boot)
 const HOLD_MS = 1500;   // pausa após a última linha, antes da tela do ARES
@@ -32,7 +32,7 @@ function fitAresSub() {
 
 export async function loadAresTerminalLines() {
   try {
-    const response = await fetch("src/ares-terminal.txt");
+    const response = await fetch("src/intro/ares-terminal.txt");
     const text = await response.text();
     lines = text.replace(/\n+$/, "").split(/\r?\n/);   // mantém linhas em branco internas
   } catch (e) {

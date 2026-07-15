@@ -1,7 +1,7 @@
 // Overlay de debug (Ctrl+D+B): visualiza o "pathfinding" da IA por cima da cena.
 // Vive fora do Renderer pra não inflar o desenho normal; recebe o renderer (`r`)
 // pra usar o contexto e a câmera. Dev-only — não entra no caminho de jogo.
-import { CELL, COLS, ROWS, DIRS, BASE_TICK, MIN_TICK, clamp } from "./config.js";
+import { CELL, COLS, ROWS, DIRS, BASE_TICK, MIN_TICK, clamp } from "../core/config.js";
 
 // Buffers reaproveitados entre frames (sem realocar).
 let dbgOwner = null, dbgDist = null, dbgQ = null;

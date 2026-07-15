@@ -1,7 +1,7 @@
 // Sound engine 100% procedural (Web Audio API), tema 16-bit/chiptune.
 // Sintetiza os motores das motinhas, explosões e pequenos jingles —
 // nenhum arquivo de áudio envolvido. A trilha musical é separada (main.js).
-import { clamp, BASE_TICK, MIN_TICK } from "./config.js";
+import { clamp, BASE_TICK, MIN_TICK } from "../core/config.js";
 
 const ENGINE_SMOOTH = 0.03;   // suavização (s) da mudança de tom — baixa p/ não mascarar o vibrato
 

@@ -1,7 +1,7 @@
 // Cores das motos e sincronização da UI de cores. P1/P2 vêm dos sliders de matiz;
 // CPUs extras ganham matizes espalhadas; o ARES é sempre vermelho.
 import { el } from "./dom.js";
-import { ARES_HUE } from "./config.js";
+import { ARES_HUE } from "../core/config.js";
 
 export function hueColor(hue) { return `hsl(${hue}, 100%, 60%)`; }
 export function hueGlow(hue)  { return `hsla(${hue}, 100%, 60%, 0.9)`; }

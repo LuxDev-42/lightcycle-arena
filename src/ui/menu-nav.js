@@ -2,7 +2,7 @@
 // registra cada overlay com seus itens (botões, sliders, steppers) e o engine
 // cuida de mostrar/esconder, foco, navegação e hover. Adicionar um menu = 1
 // registerMenu + o overlay no HTML.
-import { audio } from "./engines.js";
+import { audio } from "../engines.js";
 
 const overlays = [];          // todos os overlays registrados (alvos do showOnly)
 const configs = new Map();    // overlayEl -> [navItem]

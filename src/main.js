@@ -7,19 +7,19 @@ import {
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
-} from "./config.js";
-import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./logic.js";
-import { el } from "./dom.js";
-import { app } from "./app.js";
-import { state } from "./state.js";
+} from "./core/config.js";
+import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./core/logic.js";
+import { el } from "./ui/dom.js";
+import { app } from "./core/app.js";
+import { state } from "./core/state.js";
 import { renderer, audio, music } from "./engines.js";
-import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./colors.js";
-import { defineSetting, setSetting, stepSetting, settings } from "./settings.js";
-import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./menu-nav.js";
-import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./ares-intro.js";
-import { initInput, setLanSteer, setTeamSelect } from "./input.js";
-import { playIntro, skipIntro } from "./title-intro.js";
-import { serializePlayers, applyPlayers } from "./lan-sync.js";
+import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./ui/colors.js";
+import { defineSetting, setSetting, stepSetting, settings } from "./ui/settings.js";
+import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./ui/menu-nav.js";
+import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./intro/ares-intro.js";
+import { initInput, setLanSteer, setTeamSelect } from "./input/input.js";
+import { playIntro, skipIntro } from "./intro/title-intro.js";
+import { serializePlayers, applyPlayers } from "./net/lan-sync.js";
 
 // ---- Settings: definições (label + persistência + efeito) ----
 const MUSIC_VOLUME_MULT = 0.5;                              // teto permanente do volume da música (50%)

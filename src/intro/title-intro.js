@@ -3,8 +3,8 @@
 // no menu) até o lugar dele no menu; então o menu faz fade-in e fica interativo.
 // Tudo skipável (Esc — via handleEscape no main — ou clique). A música do menu
 // (Solar Sailer) começa junto; no browser, autoplay só destrava no 1º gesto.
-import { el } from "./dom.js";
-import { music } from "./engines.js";
+import { el } from "../ui/dom.js";
+import { music } from "../engines.js";
 
 // Tempos (ms) — levemente dramático, mas curto.
 const CREDIT_IN = 900, CREDIT_HOLD = 1300, CREDIT_OUT = 600, GAP = 300;

@@ -1,6 +1,6 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_LINGER_MS, clamp } from "./config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_LINGER_MS, clamp } from "../core/config.js";
 import { drawDebug } from "./debug-overlay.js";
 
 // Suavização criticamente amortecida (SmoothDamp, à la Unity): persegue `target`
