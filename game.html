@@ -333,6 +333,7 @@
   .nameplate .np-keys { display: flex; gap: 5px; }
   .nameplate .np-keys kbd { font-family: var(--font-display); font-size: 15px; font-weight: 700; min-width: 24px; padding: 4px 6px;
     text-align: center; color: #cdeef7; background: rgba(25,224,255,0.12); border: 1px solid rgba(180,220,235,0.5); border-radius: 5px; box-shadow: none; }
+  .nameplate .np-keys kbd.np-pad { min-width: 0; padding: 4px 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
   .nameplate::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); width: 0; height: 0; border: 8px solid transparent; }
   .nameplate:not(.below)::after { top: 100%; border-top-color: var(--pc, #19e0ff); }
   .nameplate.below::after { bottom: 100%; border-bottom-color: var(--pc, #19e0ff); }
