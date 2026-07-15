@@ -19,6 +19,15 @@ import { renderScoreboard, scoreChips, teamScoreChips } from "./ui/scoreboard.js
 import { setNameplates, updateNameplates, hideNameplates } from "./ui/nameplates.js";
 import { toggleFullscreen, syncFullscreenLabel } from "./ui/fullscreen.js";
 import { buildSoundTests, soundTestNav } from "./ui/sound-tests.js";
+import {
+  lan, lanAvailable, currentMatchConfig, getProfileName, setProfileName,
+  createSession, startFindSessions, exitLanFind, leaveLan,
+  onPauseResume, lanEscPause, lanSendSnapshot, lanAfterReset, initLan,
+} from "./net/lan-client.js";
+import {
+  openLobby, openLocalLobby, onModeChange, refreshModeSwatches, onLobbyReady, onLobbyLeave,
+  lobbyHueInput, lobbyNameInput, renderLobby, renderLocalRoster, lobbyKind, initLobby,
+} from "./ui/lobby.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./ui/settings.js";
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./ui/menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./intro/ares-intro.js";
@@ -135,7 +144,7 @@ function resetRound() {
   state.players = state.roster.map((r, i) => {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
       : (state.gameMode === "teams" ? teamSkin(r.team, i)                       // modo times: cor do time
-      : (lanHues && lanHues[i] != null ? { color: hueColor(lanHues[i]), glow: hueGlow(lanHues[i]), hue: lanHues[i] }  // LAN: cor do lobby (humanos)
+      : (lan.hues && lan.hues[i] != null ? { color: hueColor(lan.hues[i]), glow: hueGlow(lan.hues[i]), hue: lan.hues[i] }  // LAN: cor do lobby (humanos)
       : skinForIndex(i, total)));                                               // CPUs / local: matiz espalhada
     const p = makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
     p.team = r.team ?? -1;
@@ -146,7 +155,7 @@ function resetRound() {
   prevAlive = state.players.map(() => true);
   prevTrailGone = state.players.map(() => false);
   windupFired = state.players.map(() => false);
-  setNameplates(lanRole ? lanState.mySlot : null);   // balões "quem é quem" (somem logo após o início)
+  setNameplates(lan.role ? lan.state.mySlot : null);   // balões "quem é quem" (somem logo após o início)
   state.roundWinner = null;
   state.dyingTimer = 0;
   renderer.snapToTarget();
@@ -199,7 +208,7 @@ function frame(timestamp) {
   if (!app.paused) {
     updateParticles(state, dt);
     if (state.nameplateTimer > 0) state.nameplateTimer -= dt;   // some com os balões "quem é quem"
-    if (lanRole === "client") {
+    if (lan.role === "client") {
       /* partida LAN: o estado vem dos snapshots (lanApplySnapshot) — nada a simular aqui */
     } else if (state.phase === "aresintro") {
       if (isTerminalActive()) updateAresTerminal(dt);
@@ -259,7 +268,7 @@ function frame(timestamp) {
       }
     }
   }
-  if (lanRole === "host") lanSendSnapshot();      // host transmite o estado a cada frame
+  if (lan.role === "host") lanSendSnapshot();      // host transmite o estado a cada frame
   renderer.updateCamera(state, dt);
   let pans = null;
   if (state.players) {
@@ -275,7 +284,7 @@ function frame(timestamp) {
 
 // ---- Fluxo ----
 async function startMatch(mode) {
-  lanRole = null; lanHues = null; setLanSteer(null);   // partida local: garante que o modo LAN está desligado
+  lan.role = null; lan.hues = null; setLanSteer(null);   // partida local: garante que o modo LAN está desligado
   const chance = mode === "2p" ? ARES_CHANCE / 10 : ARES_CHANCE;
   state.ares = Math.random() < chance;     // sorteia o modo ARES
   aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera só após a 1ª morte)
@@ -346,14 +355,14 @@ function renderTeamSelect() {
 }
 
 function again() {   // "Again" local = nova partida; no LAN = "Continuar" → rematch (volta pro lobby)
-  if (lanRole) { if (lanAvailable() && window.lan.returnLobby) window.lan.returnLobby(); return; }
+  if (lan.role) { if (lanAvailable() && window.lan.returnLobby) window.lan.returnLobby(); return; }
   startMatch(state.mode);
 }
 
 function goMenu() {
   app.running = false;
   app.paused = false;
-  if (lanRole) { if (lanAvailable()) window.lan.leave(); lanRole = null; lanHues = null; setLanSteer(null); }   // encerra a sessão LAN
+  if (lan.role) { if (lanAvailable()) window.lan.leave(); lan.role = null; lan.hues = null; setLanSteer(null); }   // encerra a sessão LAN
   hideTouchControls();
   state.phase = "menu";
   state.ares = false;                      // modo ARES só sai ao voltar pro menu
@@ -379,7 +388,7 @@ function closeOptions() {
   if (optionsReturn === "lobby") {
     showOnly(el.lobby);
     if (lobbyKind === "local") renderLocalRoster();                                        // CPUs/mapa podem ter mudado
-    else if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); // host: atualiza a config da partida
+    else if (lan.state.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); // host: atualiza a config da partida
     return;
   }
   showOnly(el.menu);
@@ -426,344 +435,7 @@ function backToMultiplayer() { showOnly(el.multiplayerMenu); }
 function backToLan()         { showOnly(el.lanMenu); }
 function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
 
-// Rede exposta pelo Electron (window.lan). No browser sem ponte, fica indisponível.
-let lanState = { active: false, isHost: false, youId: null, players: [], myHue: 190, myColor: hueColor(190) };
-const lanAvailable = () => !!window.lan;
-const PROFILE_KEY = "lc.profile";
-const getProfileName = () => { try { return (localStorage.getItem(PROFILE_KEY) || "").trim() || "Jogador"; } catch { return "Jogador"; } };
-const setProfileName = (n) => { try { localStorage.setItem(PROFILE_KEY, n); } catch {} };
-const currentMatchConfig = () => ({ map: settings.map ?? 0, size: settings.arenaSize ?? 1, difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0, gameMode: settings.gameMode ?? 0 });
 
-async function createSession() {
-  if (!lanAvailable()) return;
-  const h = +el.hue1.value;
-  lanState = { active: true, isHost: true, youId: null, players: [], myHue: h, myColor: hueColor(h) };
-  const info = await window.lan.create({ name: "Sala de " + getProfileName(), playerName: getProfileName(), color: lanState.myColor,
-    match: currentMatchConfig() });
-  lanState.youId = info.youId;
-  lanState.players = info.players || [];
-  openLobby();
-}
-async function joinSessionEntry(session) {
-  if (!lanAvailable()) return;
-  const h = +el.hue2.value;
-  lanState = { active: true, isHost: false, youId: null, players: [], myHue: h, myColor: hueColor(h) };
-  await window.lan.join(session, { playerName: getProfileName(), color: lanState.myColor });
-  openLobby();
-}
-let lanListSig = "";   // assinatura do conjunto de sessões exibido (evita reconstruir à toa)
-function startFindSessions() {
-  el.lanSessionList.innerHTML = "";
-  lanListSig = "";                                            // força reconstruir na próxima render
-  if (!lanAvailable()) { el.lanFindStatus.textContent = "LAN disponível só no app desktop (Electron)."; return; }
-  el.lanFindStatus.textContent = "Procurando sessões na rede…";
-  window.lan.find().then(renderSessions);
-}
-function exitLanFind() { if (lanAvailable()) window.lan.stopFind(); backToLan(); }
-
-// Só reconstrói DOM/navegação quando o conjunto de sessões REALMENTE muda — senão a
-// reconstrução a cada anúncio (~1/s) apagava o botão focado e o outline "sumia".
-function renderSessions(list) {
-  el.lanFindStatus.textContent = list.length ? "Selecione uma sessão para entrar:" : "Procurando sessões na rede…";
-  const sig = list.map((s) => `${s.id}:${s.players}/${s.max}@${s.host}:${s.tcpPort}`).join("|");
-  if (sig === lanListSig) return;                            // nada mudou → preserva foco/outline
-  lanListSig = sig;
-  el.lanSessionList.innerHTML = "";
-  for (const s of list) {
-    const b = document.createElement("button");
-    b.className = "lan-session";
-    const nm = document.createElement("span"); nm.textContent = s.name;
-    const info = document.createElement("span"); info.className = "lan-host"; info.textContent = `${s.players}/${s.max} · ${s.host}`;
-    b.append(nm, info);
-    b.addEventListener("click", () => joinSessionEntry(s));
-    el.lanSessionList.appendChild(b);
-  }
-  registerMenu(el.lanFind, [
-    ...Array.from(el.lanSessionList.children).map((b) => ({ el: b, type: "button", run: () => b.click() })),
-    navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back"),
-  ]);
-  if (!el.lanFind.classList.contains("hidden")) refreshNav();
-}
-
-// A "sala de lobby" (#lobby) serve os dois fluxos: LAN (jogadores em rede) e local
-// (singleplayer / multiplayer local). `lobbyKind` decide o que aparece e o que o
-// botão "Pronto" faz (marcar pronto na rede vs. começar a partida local).
-let lobbyKind = "lan";   // "lan" | "local"
-
-function openLobby() {   // LAN
-  lobbyKind = "lan";
-  el.lobbyTitle.textContent = "Lobby";
-  el.lobbyName.value = getProfileName();
-  el.lobbyHue.value = lanState.myHue;
-  applyLobbyColor(false);
-  setLobbyKindUI();
-  if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig());
-  registerLobbyNav();
-  showOnly(el.lobby);
-  renderLobby();
-}
-
-function openLocalLobby(mode) {   // singleplayer / multiplayer local
-  lobbyKind = "local";
-  lanRole = null; lanHues = null; setLanSteer(null);   // garante que o modo LAN está desligado
-  state.mode = mode;
-  el.lobbyTitle.textContent = mode === "2p" ? "Multiplayer Local" : "1 Jogador";
-  setLobbyKindUI();
-  renderLocalRoster();
-  registerLobbyNav();
-  showOnly(el.lobby);
-}
-
-// Ajusta o que aparece no lobby conforme o tipo (LAN x local) e o papel (host x cliente).
-function setLobbyKindUI() {
-  const isLan = lobbyKind === "lan";
-  const showMode = !isLan || lanState.isHost;   // switch de modo: local sempre; LAN só o host
-  el.lobbyNameField.style.display = isLan ? "" : "none";   // nome/cor de rede: só no LAN
-  el.lobbyColors.style.display = isLan ? "" : "none";
-  el.modeSeg.style.display = showMode ? "" : "none";
-  el.btnLobbyOptions.style.display = showMode ? "" : "none";
-  el.btnLobbyReady.textContent = isLan ? "Pronto" : "Começar";
-  el.btnLobbyLeave.querySelector(".btn-label").textContent = isLan ? "Sair" : "Voltar";
-}
-
-// Preview do roster local (quem vai jogar) — mesmas cores da partida (skinForIndex).
-function renderLocalRoster() {
-  configureRoster(state.mode);   // monta state.roster + state.gameMode a partir das settings (a partida remonta depois)
-  const teams = state.gameMode === "teams";
-  const total = state.roster.length;
-  el.lobbyPlayers.innerHTML = "";
-  state.roster.forEach((r, i) => {
-    const c = hueColor(skinForIndex(i, total).hue);
-    const row = document.createElement("div"); row.className = "lobby-player";
-    const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = c; dot.style.boxShadow = `0 0 8px ${c}`;
-    const name = document.createElement("span"); name.className = "pname"; name.textContent = r.label;
-    row.append(dot, name);
-    el.lobbyPlayers.appendChild(row);
-  });
-  el.lobbyStatus.textContent = teams ? "No modo Times você escolhe os lados ao começar." : "Pronto para começar.";
-}
-
-function onModeChange(v) {
-  setSetting("gameMode", v);   // apply acende as pílulas + ajusta state.gameMode (fora de partida)
-  if (lobbyKind === "lan") { if (lanState.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); }
-  else renderLocalRoster();
-}
-function refreshModeSwatches() {   // pílulas de modo herdam as cores reais: P1 (hue1) no FFA, TEAM_HUES no Times
-  el.modeFfa.style.setProperty("--ffa-h", +el.hue1.value);
-  el.modeTeams.style.setProperty("--a-h", TEAM_HUES[0]);
-  el.modeTeams.style.setProperty("--b-h", TEAM_HUES[1]);
-}
-function onLobbyReady() { if (lobbyKind === "local") startMatch(state.mode); else toggleReady(); }
-function onLobbyLeave() {
-  if (lobbyKind === "local") { audio.uiBack(); showOnly(state.mode === "2p" ? el.multiplayerMenu : el.menu); }
-  else leaveLan();
-}
-function leaveLan() { lanState.active = false; lanRole = null; lanHues = null; setLanSteer(null); if (lanAvailable()) window.lan.leave(); showOnly(el.lanMenu); }
-function lanReturnToLobby() { if (lanRole) { app.running = false; openLobby(); } }   // "return" da rede → rematch no lobby
-
-// Host caiu (cliente perdeu a conexão): no lobby, o próximo jogador do array assume
-// como host e os demais reprocuram; no meio da partida, encerra a sessão limpo.
-function lanHostLeft() {
-  const others = (lanState.players || []).filter((p) => !p.isHost);   // clientes na ordem
-  const iAmNext = others[0] && others[0].id === lanState.youId;       // sou o próximo → viro host
-  const inMatch = app.running;
-  app.running = false; app.paused = false; lanRole = null; lanHues = null; lanPausedBy = null;
-  setLanSteer(null); lanState.active = false;
-  if (inMatch) { console.log("%c[LAN]", "color:#ff8a1e", "host saiu no meio da partida — sessão encerrada"); showOnly(el.lanMenu); }
-  else if (iAmNext) { console.log("%c[LAN]", "color:#7CFC00", "host saiu — assumindo como novo host"); createSession(); }
-  else { console.log("%c[LAN]", "color:#19e0ff", "host saiu — procurando o novo host"); openLanFind(); }
-}
-
-// ---- Pausa LAN (sincronizada, host-autoritativa) ----
-function lanRequestPause() { if (lanAvailable()) window.lan.pause(); }
-function lanResume() { if (lanAvailable()) window.lan.resume(); }
-function onPauseResume() { if (lanRole) lanResume(); else resumeGame(); }
-function lanEscPause() {
-  if (isOpenSub()) { audio.uiBack(); backToOptions(); return; }                                  // sub-opção → opções (host)
-  if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); return; }  // opções → pausa
-  if (!el.pauseMenu.classList.contains("hidden")) {                                              // pausado
-    const amPauser = lanPausedBy && lanPausedBy.id === lanState.youId;
-    if (amPauser || lanRole === "host") { audio.uiBack(); lanResume(); }                         // pauser ou host retoma
-    return;
-  }
-  lanRequestPause();                                                                             // rodando → pausa
-}
-function lanOnPause(data) { lanPausedBy = { id: data.by, name: data.name }; app.paused = true; music.pause(); showLanPauseMenu(); }
-function lanOnResume() { lanPausedBy = null; app.paused = false; music.resume(); showOnly(null); }
-function showLanPauseMenu() {
-  const amPauser = lanPausedBy && lanPausedBy.id === lanState.youId;
-  const isHost = lanRole === "host";
-  el.pauseTitle.textContent = amPauser ? "Pausado" : `${(lanPausedBy && lanPausedBy.name) || "Jogador"} pausou`;
-  el.btnPauseResume.style.display = (amPauser || isHost) ? "" : "none";       // só o pauser (ou o host) retoma
-  el.btnPauseOptions.style.display = (isHost && amPauser) ? "" : "none";      // opções só p/ host que pausou
-  el.btnPauseMenu.querySelector(".btn-label").textContent = "Sair";          // no LAN o botão vira "Sair"
-  showOnly(el.pauseMenu);
-}
-
-function applyLobbyColor(sendNet) {
-  const c = hueColor(lanState.myHue);
-  lanState.myColor = c;
-  el.lobbyHue.style.setProperty("--thumb", c);
-  el.lobbySwatch.style.background = c; el.lobbySwatch.style.boxShadow = `0 0 8px ${c}`;
-  if (sendNet && lanAvailable()) window.lan.setColor(c);
-}
-let lobbyColorTimer = null;
-function lobbyHueInput() {
-  lanState.myHue = +el.lobbyHue.value;
-  applyLobbyColor(false);                                                    // visual imediato
-  clearTimeout(lobbyColorTimer);
-  lobbyColorTimer = setTimeout(() => { if (lanAvailable()) window.lan.setColor(hueColor(lanState.myHue)); }, 120);  // rede com debounce
-}
-let lobbyNameTimer = null;
-function lobbyNameInput() {
-  const n = el.lobbyName.value.slice(0, 16);
-  setProfileName(n);                                                         // persiste local (localStorage)
-  clearTimeout(lobbyNameTimer);
-  lobbyNameTimer = setTimeout(() => { if (lanAvailable() && window.lan.setName) window.lan.setName(n.trim() || "Jogador"); }, 200);
-}
-function toggleReady() {
-  const me = lanState.players.find((p) => p.id === lanState.youId);
-  if (lanAvailable()) window.lan.setReady(!(me && me.ready));
-}
-function registerLobbyNav() {
-  const nav = [];
-  if (lobbyKind === "local" || lanState.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
-  if (lobbyKind === "lan") { nav.push(navInput(el.lobbyName)); nav.push(navSlider(el.lobbyHue, 8)); }   // nome navegável por teclado (Enter edita)
-  nav.push(navBtn("btn-lobby-ready"));
-  if (lobbyKind === "local" || lanState.isHost) nav.push(navBtn("btn-lobby-options"));
-  nav.push(navBtn("btn-lobby-leave"));
-  registerMenu(el.lobby, nav);
-}
-function renderLobby() {
-  el.lobbyPlayers.innerHTML = "";
-  for (const p of lanState.players) {
-    const row = document.createElement("div");
-    row.className = "lobby-player" + (p.id === lanState.youId ? " me" : "");
-    const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = p.color; dot.style.boxShadow = `0 0 8px ${p.color}`;
-    const name = document.createElement("span"); name.className = "pname";
-    name.textContent = p.name + (p.isHost ? " (host)" : "") + (p.id === lanState.youId ? " · você" : "");
-    const rd = document.createElement("span"); rd.className = "pready " + (p.ready ? "on" : "off"); rd.textContent = p.ready ? "Pronto" : "Aguardando";
-    row.append(dot, name, rd);
-    el.lobbyPlayers.appendChild(row);
-  }
-  const me = lanState.players.find((p) => p.id === lanState.youId);
-  el.btnLobbyReady.textContent = me && me.ready ? "Cancelar" : "Pronto";
-  el.lobbyStatus.textContent = lanState.players.length < 2 ? "Aguardando outro jogador entrar…" : "Marque pronto para começar.";
-}
-// ---- Partida LAN (host-autoritativo: host simula e transmite estado; cliente renderiza + envia input) ----
-let lanRole = null;              // "host" | "client" | null
-let lanHues = null;              // matiz por slot na partida LAN (do lobby)
-let lanSlotById = {};            // id do jogador → slot
-const lanSyncLens = [];          // trilha já transmitida por player (host, delta)
-let lanRoundHost = 0, lanClientRound = 0;
-let lanPrevAlive = [];
-let lanPausedBy = null;   // { id, name } de quem pausou (LAN), ou null
-const hueOf = (c) => { const m = /hsl\((\d+)/.exec(c || ""); return m ? +m[1] : 190; };
-
-function startLanMatch(payload) {
-  lanRole = lanState.isHost ? "host" : "client";
-  const players = payload.players.slice().sort((a, b) => a.slot - b.slot);
-  lanHues = players.map((p) => hueOf(p.color));
-  lanSlotById = {}; players.forEach((p) => { lanSlotById[p.id] = p.slot; });
-  lanState.mySlot = lanSlotById[lanState.youId] ?? 0;
-  state.ares = false;
-  state.mode = "2p";
-  const m = payload.match || {};
-  state.gameMode = m.gameMode === 1 ? "teams" : "ffa";
-  const cpus = Math.max(0, Math.min(m.cpus ?? 0, 8 - players.length));   // CPUs (IA rodada no host) cabendo no limite
-  const roster = [
-    ...players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` })),
-    ...Array.from({ length: cpus }, (_, k) => ({ isAI: true, label: cpus > 1 ? `CPU ${k + 1}` : "CPU" })),
-  ];
-  // Times no LAN: alternado por ordem de slot — determinístico, host e cliente chegam
-  // no MESMO resultado sem precisar de sincronização extra da escolha de times.
-  roster.forEach((r, i) => { r.team = state.gameMode === "teams" ? (i % 2) : -1; });
-  state.roster = roster;
-  state.difficulty = m.difficulty ?? settings.difficulty;
-  state.scores = new Array(state.roster.length).fill(0);
-  state.teamScores = [0, 0];
-  setArenaSize(ARENA_SIZES[m.size ?? 1]); state.arenaLayout = buildArenaLayout(m.map ?? 0, COLS);
-  showOnly(null);
-  lanRoundHost = 0; lanClientRound = 0;
-  resetRound();
-  lanAfterReset();
-  app.paused = false; app.running = true; app.lastTime = 0;
-  audio.resume(); audio.setEnginesActive(true); music.start(false);
-  setLanSteer(lanLocalSteer);
-  beginCountdown(false);          // os dois mostram a contagem; no cliente o timing vem dos snapshots
-  requestAnimationFrame(frame);
-}
-function lanAfterReset() {        // host: reseta o rastreio de delta pós-resetRound (spawn já existe nos dois)
-  lanSyncLens.length = 0;
-  lanPrevAlive = state.players.map((p) => p.alive);
-  state.players.forEach((p, i) => { lanSyncLens[i] = p.trail.length; });
-}
-function lanLocalSteer(dir) {     // input local → host aplica no próprio slot; cliente envia pro host
-  const p = state.players && state.players[lanState.mySlot];
-  if (!p || dir === OPPOSITE[p.dir]) return;
-  if (lanRole === "host") p.nextDir = dir;
-  else if (lanAvailable()) window.lan.sendInput(dir);
-}
-function lanHostInput(data) {     // host: aplica o input recebido de um cliente no slot dele
-  const p = state.players && state.players[lanSlotById[data.id]];
-  if (p && p.alive && data.dir !== OPPOSITE[p.dir]) p.nextDir = data.dir;
-}
-function lanSendSnapshot() {
-  if (!lanAvailable() || !state.players) return;
-  window.lan.sendState({
-    ph: state.phase, rw: state.roundWinner, ct: state.countdownTimer, dy: state.dyingTimer,
-    round: lanRoundHost, sc: state.scores.slice(), ts: state.teamScores.slice(),
-    players: serializePlayers(state.players, lanSyncLens),
-  });
-}
-function lanApplySnapshot(snap) {
-  if (lanRole !== "client" || !snap || !state.players) return;
-  if (snap.round !== lanClientRound) {          // host começou novo round → reconstrói idêntico
-    lanClientRound = snap.round;
-    resetRound();
-    lanPrevAlive = state.players.map(() => true);
-    state.countShown = -1;
-  }
-  state.scores = snap.sc; state.roundWinner = snap.rw;
-  if (snap.ts) state.teamScores = snap.ts;
-  state.countdownTimer = snap.ct; state.dyingTimer = snap.dy;
-  applyPlayers(state.players, snap.players);
-  const prevPhase = state.phase;
-  state.phase = snap.ph;
-  if (snap.ph === "countdown") { el.countdown.classList.remove("hidden"); updateCountdown(); }
-  else el.countdown.classList.add("hidden");
-  for (let i = 0; i < state.players.length; i++) {
-    const p = state.players[i];
-    if (lanPrevAlive[i] && !p.alive) { audio.explosion(renderer.screenPan(p)); renderer.addShake(SHAKE_DEATH); renderer.addFlash(0.22, "#ffffff"); }
-    lanPrevAlive[i] = p.alive;
-  }
-  renderScoreboard();
-  if (snap.ph === "result" && prevPhase !== "result") {
-    if (state.gameMode === "teams") {
-      const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
-      showVictoryTeam(winTeam >= 0 ? winTeam : 0);
-    } else {
-      const champ = state.players.find((p) => state.scores[p.id - 1] >= WIN_SCORE) || state.players[0];
-      showVictory(champ);
-    }
-  }
-}
-
-// Eventos vindos do processo main (Electron). Registrado uma vez.
-if (window.lan) window.lan.on((msg) => {
-  if (msg.type === "log") { console.log("%c[LAN]", "color:#19e0ff;font-weight:bold", msg.data); return; }
-  if (msg.type !== "state" && msg.type !== "input") console.log("%c[LAN]", "color:#7CFC00;font-weight:bold", msg.type, msg.data ?? "");
-  if (msg.type === "sessions") renderSessions(msg.data);
-  else if (msg.type === "welcome") { lanState.youId = msg.data.youId; renderLobby(); }
-  else if (msg.type === "lobby") { lanState.players = msg.data.players; renderLobby(); }
-  else if (msg.type === "start") startLanMatch(msg.data);
-  else if (msg.type === "input") lanHostInput(msg.data);       // host: input de um cliente
-  else if (msg.type === "state") lanApplySnapshot(msg.data);   // cliente: snapshot do host
-  else if (msg.type === "return") lanReturnToLobby();          // rematch → todos voltam pro lobby
-  else if (msg.type === "pause") lanOnPause(msg.data);         // alguém pausou → congela + overlay
-  else if (msg.type === "resume") lanOnResume();
-  else if (msg.type === "disconnect") { if (lanState.active && !lanState.isHost) lanHostLeft(); }   // host caiu → migração/rediscovery
-});
 
 // Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
 function endRound() {
@@ -783,7 +455,7 @@ function endRound() {
 }
 function nextRound() {
   resetRound();              // mesmo roster/placar/ARES; novas posições
-  if (lanRole === "host") { lanRoundHost++; lanAfterReset(); }   // novo round → sincroniza o reset com os clientes
+  if (lan.role === "host") { lan.roundHost++; lanAfterReset(); }   // novo round → sincroniza o reset com os clientes
   beginCountdown(false);     // 3-2-1 e segue
 }
 
@@ -800,8 +472,8 @@ function showVictory(champ) {
   el.resultScore.innerHTML = scoreChips(champ.id);
   const againLbl = document.querySelector("#btn-again .btn-label");   // LAN: "Continuar"/"Sair"; local: "Again"/"Menu"
   const menuLbl = document.querySelector("#btn-menu .btn-label");
-  if (againLbl) againLbl.textContent = lanRole ? "Continuar" : "Again";
-  if (menuLbl) menuLbl.textContent = lanRole ? "Sair" : "Menu";
+  if (againLbl) againLbl.textContent = lan.role ? "Continuar" : "Again";
+  if (menuLbl) menuLbl.textContent = lan.role ? "Sair" : "Menu";
   showOnly(el.result);
 }
 function showVictoryTeam(team) {
@@ -818,8 +490,8 @@ function showVictoryTeam(team) {
   el.resultScore.innerHTML = teamScoreChips(team);
   const againLbl = document.querySelector("#btn-again .btn-label");
   const menuLbl = document.querySelector("#btn-menu .btn-label");
-  if (againLbl) againLbl.textContent = lanRole ? "Continuar" : "Again";
-  if (menuLbl) menuLbl.textContent = lanRole ? "Sair" : "Menu";
+  if (againLbl) againLbl.textContent = lan.role ? "Continuar" : "Again";
+  if (menuLbl) menuLbl.textContent = lan.role ? "Sair" : "Menu";
   showOnly(el.result);
 }
 
@@ -862,7 +534,7 @@ function handleEscape() {
     if (aresEscAllowed) { audio.uiBack(); aresEnd(); }            // ARES: só sai após a 1ª morte/derrota
     else { renderer.addFlash(0.45, "#ff0000"); audio.error(); }   // antes disso: flash vermelho + som de erro
   } else {   // em partida (playing/dying/countdown)
-    if (lanRole) { lanEscPause(); return; }                                                   // LAN: Esc pausa (sincronizado)
+    if (lan.role) { lanEscPause(); return; }                                                   // LAN: Esc pausa (sincronizado)
     if (isOpenSub()) { audio.uiBack(); backToOptions(); }                                      // sub-opção → opções
     else if (!el.optionsMenu.classList.contains("hidden")) { audio.uiBack(); closeOptions(); } // opções → menu de pausa
     else if (!el.pauseMenu.classList.contains("hidden")) { audio.uiBack(); resumeGame(); }     // pausa → continua
@@ -1011,6 +683,12 @@ buildNav();
 wireControls();
 initInput({ onEscape: handleEscape });
 setTeamSelect((pid, action) => { if (action === "confirm") teamSelectConfirm(); else teamSelectMove(pid, action); });
+// Injeta nos módulos LAN/lobby os callbacks de fluxo/menu (quebra o import circular).
+initLobby({ startMatch, configureRoster });
+initLan({
+  resetRound, beginCountdown, updateCountdown, frame, showVictory, showVictoryTeam,
+  openLobby, renderLobby, openLanFind, backToLan, isOpenSub, backToOptions, closeOptions, resumeGame,
+});
 renderer.render(state);                  // desenha a cena do menu (fica atrás da intro)
 state.phase = "intro";
 playIntro(() => { showOnly(el.menu); state.phase = "menu"; });   // abertura → revela o menu interativo
