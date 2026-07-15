@@ -1,6 +1,6 @@
-// Input do jogador: teclado (WASD / setas) + toque (botões de virar). Converte
-// tudo em steer() sobre o jogador humano. A navegação de menu é delegada ao
-// menu-nav; o único callback de fluxo injetado é onEscape (sair/voltar).
+// Input do jogador: teclado (WASD / setas), toque (botões de virar) e gamepad
+// (Gamepad API, por polling). Converte tudo em steer() sobre o jogador humano; a
+// navegação de menu é delegada ao menu-nav; o único callback de fluxo é onEscape.
 import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, renderer, music } from "../engines.js";
@@ -107,6 +107,58 @@ function bindTurn(id, playerId, side) {
   if (el) el.addEventListener("pointerdown", (e) => { e.preventDefault(); audio.resume(); steerTurn(playerId, side); });
 }
 
+// ---- Gamepad (Gamepad API, por polling) ----
+// Um controle por jogador: índice 0 → P1, 1 → P2 (no single, qualquer controle guia o P1).
+// D-pad OU analógico esquerdo = direção absoluta (como o teclado); A confirma no menu,
+// B/Start = voltar/pausar. Dispara na BORDA (aperto novo), igual ao keydown.
+const GP_DEADZONE = 0.55;
+const gpPrev = [];   // { dir, confirm, back } anterior por controle (detecta aperto novo)
+
+function gamepadDir(gp) {
+  const b = gp.buttons, ax = gp.axes;
+  const held = (i) => b[i] && b[i].pressed;
+  if (held(12) || (ax[1] ?? 0) < -GP_DEADZONE) return "up";
+  if (held(13) || (ax[1] ?? 0) >  GP_DEADZONE) return "down";
+  if (held(14) || (ax[0] ?? 0) < -GP_DEADZONE) return "left";
+  if (held(15) || (ax[0] ?? 0) >  GP_DEADZONE) return "right";
+  return null;
+}
+
+function pollGamepads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (let i = 0; i < pads.length; i++) {
+    const gp = pads[i];
+    if (!gp) { gpPrev[i] = null; continue; }
+    const prev = gpPrev[i] || { dir: null, confirm: false, back: false };
+    const dir = gamepadDir(gp);
+    const confirm = !!(gp.buttons[0] && gp.buttons[0].pressed);                                    // A
+    const back = !!((gp.buttons[1] && gp.buttons[1].pressed) || (gp.buttons[9] && gp.buttons[9].pressed));  // B / Start
+    const dirEdge = dir && dir !== prev.dir;
+    const confirmEdge = confirm && !prev.confirm;
+    const backEdge = back && !prev.back;
+    if (confirmEdge || backEdge) audio.resume();   // aperto = gesto: destrava o áudio
+
+    const pid = state.mode === "cpu" ? 1 : i + 1;
+    if (state.phase === "teamselect") {
+      if (dirEdge && dir === "left") teamSelectFn && teamSelectFn(pid, 0);
+      else if (dirEdge && dir === "right") teamSelectFn && teamSelectFn(pid, 1);
+      if (confirmEdge) teamSelectFn && teamSelectFn(0, "confirm");
+    } else if (isNavActive()) {
+      if (dirEdge) {
+        if (dir === "up") navMove("up"); else if (dir === "down") navMove("down");
+        else if (dir === "left") navHorizontal(-1); else if (dir === "right") navHorizontal(1);
+      }
+      if (confirmEdge) activateNav();
+      if (backEdge) onEscape();
+    } else {
+      if (dirEdge) steer(pid, dir);   // em partida: vira o próprio jogador
+      if (backEdge) onEscape();       // B/Start = pausar/voltar
+    }
+    gpPrev[i] = { dir, confirm, back };
+  }
+}
+function gamepadLoop() { pollGamepads(); requestAnimationFrame(gamepadLoop); }
+
 // Liga todos os listeners de input. `handlers.onEscape` = sair/voltar (depende da fase).
 export function initInput(handlers) {
   onEscape = handlers.onEscape;
@@ -123,4 +175,6 @@ export function initInput(handlers) {
   window.addEventListener("keydown", onKeyDown, { passive: false });
   window.addEventListener("keyup", (event) => heldKeys.delete(event.key.toLowerCase()));
   window.addEventListener("blur", () => heldKeys.clear());   // evita teclas "presas" ao perder o foco
+
+  if (navigator.getGamepads) requestAnimationFrame(gamepadLoop);   // loop próprio (funciona no menu e em jogo)
 }
