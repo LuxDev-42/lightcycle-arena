@@ -16,6 +16,8 @@ export const el = {
   mapsMenu: $("maps-menu"),
   graphicsMenu: $("graphics-menu"),
   soundsMenu: $("sounds-menu"),
+  controlsMenu: $("controls-menu"),
+  controlsList: $("controls-list"),
   quitConfirm: $("quit-confirm"),
   pauseMenu: $("pause-menu"),
   pauseTitle: $("pause-title"),

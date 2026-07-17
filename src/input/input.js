@@ -7,10 +7,35 @@ import { audio, renderer, music } from "../engines.js";
 import { DIRS, OPPOSITE } from "../core/config.js";
 import { navMove, navHorizontal, activateNav, isNavActive, refreshNav } from "../ui/menu-nav.js";
 
-const KEYMAP = {
-  "w": [1, "up"], "a": [1, "left"], "s": [1, "down"], "d": [1, "right"],
-  "arrowup": [2, "up"], "arrowleft": [2, "left"], "arrowdown": [2, "down"], "arrowright": [2, "right"],
+// Teclas remapeáveis (persistidas em localStorage). Ação "pN-dir" → tecla; o KEYMAP
+// (tecla → [playerId, dir]) é reconstruído daí. Defaults: P1 = WASD, P2 = setas.
+const DEFAULT_BINDS = {
+  "p1-up": "w", "p1-left": "a", "p1-down": "s", "p1-right": "d",
+  "p2-up": "arrowup", "p2-left": "arrowleft", "p2-down": "arrowdown", "p2-right": "arrowright",
 };
+const BINDS_KEY = "lc.keybinds";
+let binds = loadBinds();
+let KEYMAP = {};
+function loadBinds() { try { return { ...DEFAULT_BINDS, ...JSON.parse(localStorage.getItem(BINDS_KEY) || "{}") }; } catch { return { ...DEFAULT_BINDS }; } }
+function saveBinds() { try { localStorage.setItem(BINDS_KEY, JSON.stringify(binds)); } catch {} }
+function rebuildKeymap() {
+  KEYMAP = {};
+  for (const action in binds) {
+    const k = binds[action]; if (!k) continue;
+    const [who, dir] = action.split("-");
+    KEYMAP[k] = [who === "p1" ? 1 : 2, dir];
+  }
+}
+rebuildKeymap();
+export function getBind(action) { return binds[action]; }
+export function bindKey(action, key) {
+  for (const a in binds) if (binds[a] === key) binds[a] = null;   // uma tecla serve a uma ação só
+  binds[action] = key;
+  saveBinds(); rebuildKeymap();
+}
+export function resetBinds() { binds = { ...DEFAULT_BINDS }; saveBinds(); rebuildKeymap(); }
+let captureCb = null;
+export function captureKey(cb) { captureCb = cb; }   // próxima tecla vai pro cb (rebind), não pro jogo
 const TURN_LEFT  = { up: "left", left: "down", down: "right", right: "up" };    // giro anti-horário (relativo ao rumo)
 const TURN_RIGHT = { up: "right", right: "down", down: "left", left: "up" };    // giro horário (relativo ao rumo)
 
@@ -46,6 +71,14 @@ export function setTeamSelect(fn) { teamSelectFn = fn; }   // seleção de time 
 function onKeyDown(event) {
   const key = event.key.toLowerCase();
   audio.resume();   // tecla = gesto: destrava o contexto de áudio (sons de UI/jogo)
+
+  if (captureCb) {   // remapeando: captura a próxima tecla (Esc cancela; modificador sozinho ignora)
+    event.preventDefault();
+    if (key === "shift" || key === "control" || key === "alt" || key === "meta") return;
+    const cb = captureCb; captureCb = null;
+    cb(key === "escape" ? null : key);
+    return;
+  }
 
   const ae = document.activeElement;   // campo de texto focado (ex.: nome no lobby): deixa digitar
   if (ae && ae.tagName === "INPUT" && (ae.type === "text" || ae.type === "")) {

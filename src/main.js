@@ -20,6 +20,7 @@ import { renderScoreboard, scoreChips, teamScoreChips } from "./ui/scoreboard.js
 import { setNameplates, updateNameplates, hideNameplates } from "./ui/nameplates.js";
 import { toggleFullscreen, syncFullscreenLabel } from "./ui/fullscreen.js";
 import { buildSoundTests, soundTestNav } from "./ui/sound-tests.js";
+import { buildControls, resetControls, controlsNav } from "./ui/controls.js";
 import {
   lan, lanAvailable, currentMatchConfig, getProfileName, setProfileName,
   createSession, startFindSessions, exitLanFind, leaveLan,
@@ -398,6 +399,7 @@ function openAdversaries() { showOnly(el.advMenu); }
 function openMaps()        { showOnly(el.mapsMenu); }
 function openGraphics()    { showOnly(el.graphicsMenu); }
 function openSounds()      { showOnly(el.soundsMenu); }
+function openControls()    { showOnly(el.controlsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }
 function backToMenu()      { showOnly(el.menu); }
 
@@ -512,7 +514,8 @@ const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
   || !el.advMenu.classList.contains("hidden")
   || !el.mapsMenu.classList.contains("hidden")
   || !el.graphicsMenu.classList.contains("hidden")
-  || !el.soundsMenu.classList.contains("hidden");
+  || !el.soundsMenu.classList.contains("hidden")
+  || !el.controlsMenu.classList.contains("hidden");
 
 function handleEscape() {
   if (state.phase === "intro") { skipIntro(); return; }   // pula a abertura
@@ -555,7 +558,7 @@ function buildNav() {
   registerMenu(el.lanMenu, [navBtn("btn-lan-create"), navBtn("btn-lan-find"), navBtn("btn-lan-back")]);
   registerMenu(el.lanFind, [navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")]);
   registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
-  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-options-back")]);
+  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
   registerMenu(el.colorsMenu, [navSlider(el.hue1, 8), navSlider(el.hue2, 8), navBtn("btn-colors-back")]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
   registerMenu(el.advMenu, [
@@ -575,6 +578,7 @@ function buildNav() {
     navBtn("btn-graphics-back"),
   ]);
   registerMenu(el.soundsMenu, [...soundTestNav, navBtn("btn-sounds-back")]);
+  registerMenu(el.controlsMenu, controlsNav());
   registerMenu(el.result, [navBtn("btn-again"), navBtn("btn-menu")]);
   registerMenu(el.pauseMenu, [navBtn("btn-pause-resume"), navBtn("btn-pause-options"), navBtn("btn-pause-menu")]);
   registerMenu(el.teamSelect, []);   // sem nav de menu: o input é por-jogador (esq/dir), tratado no input.js
@@ -635,6 +639,9 @@ function wireControls() {
   document.getElementById("btn-menu").addEventListener("click", goMenu);
   document.getElementById("btn-sounds").addEventListener("click", openSounds);
   document.getElementById("btn-sounds-back").addEventListener("click", backToOptions);
+  document.getElementById("btn-controls").addEventListener("click", openControls);
+  document.getElementById("btn-controls-back").addEventListener("click", backToOptions);
+  document.getElementById("btn-controls-reset").addEventListener("click", resetControls);
 
   document.getElementById("sp-dec").addEventListener("click", () => stepSetting("spCpus", -1));
   document.getElementById("sp-inc").addEventListener("click", () => stepSetting("spCpus", 1));
@@ -678,6 +685,7 @@ renderer.updateCamera(state, 0);
 state.phase = "menu";
 app.running = false;
 buildSoundTests();
+buildControls();
 buildNav();
 wireControls();
 initInput({ onEscape: handleEscape });
