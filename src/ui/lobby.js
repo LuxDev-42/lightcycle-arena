@@ -11,7 +11,8 @@ import { hueColor, skinForIndex } from "./colors.js";
 import { TEAM_HUES } from "./teams.js";
 import { setSetting, stepSetting } from "./settings.js";
 import { registerMenu, showOnly, navBtn, navSlider, navStepper, navInput } from "./menu-nav.js";
-import { setLanSteer } from "../input/input.js";
+import { inputIcon } from "./icons.js";
+import { setLanSteer, setLobbyJoin, playerUsesGamepad } from "../input/input.js";
 import { lan, lanAvailable, currentMatchConfig, getProfileName, setProfileName, leaveLan } from "../net/lan-client.js";
 
 export let lobbyKind = "lan";   // "lan" | "local"
@@ -19,8 +20,21 @@ export let lobbyKind = "lan";   // "lan" | "local"
 let deps = {};
 export function initLobby(injected) { deps = injected; }   // { startMatch, configureRoster }
 
+// Multiplayer local: um controle NOVO apertando "entra" como jogador (atribuído a ele).
+let joinedPads = new Set();
+function onGamepadJoin(padIndex) {
+  if (joinedPads.has(padIndex)) return false;      // já entrou → o input segue pra navegar o menu
+  if ((state.humans || 2) >= 4) return false;      // lotado (máx 4)
+  joinedPads.add(padIndex);
+  stepSetting("localHumans", 1);                   // +1 jogador (o controle vira o próximo Pn)
+  renderLocalRoster();
+  audio.uiSelect();
+  return true;
+}
+
 export function openLobby() {   // LAN
   lobbyKind = "lan";
+  setLobbyJoin(null);   // "entrar apertando" é só do multiplayer local
   el.lobbyTitle.textContent = "Lobby";
   el.lobbyName.value = getProfileName();
   el.lobbyHue.value = lan.state.myHue;
@@ -36,6 +50,8 @@ export function openLocalLobby(mode) {   // singleplayer / multiplayer local
   lobbyKind = "local";
   lan.role = null; lan.hues = null; setLanSteer(null);   // garante que o modo LAN está desligado
   state.mode = mode;
+  joinedPads = new Set();
+  setLobbyJoin(mode === "2p" ? onGamepadJoin : null);   // multiplayer local: controle entra apertando
   el.lobbyTitle.textContent = mode === "2p" ? "Multiplayer Local" : "1 Jogador";
   setLobbyKindUI();
   renderLocalRoster();
@@ -68,9 +84,16 @@ export function renderLocalRoster() {
     const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = c; dot.style.boxShadow = `0 0 8px ${c}`;
     const name = document.createElement("span"); name.className = "pname"; name.textContent = r.label;
     row.append(dot, name);
+    if (!r.isAI) {   // ícone do tipo de input (teclado ou controle)
+      const ico = document.createElement("span"); ico.className = "pinput";
+      ico.innerHTML = inputIcon(playerUsesGamepad(i) ? "gamepad" : "keyboard");
+      row.appendChild(ico);
+    }
     el.lobbyPlayers.appendChild(row);
   });
-  el.lobbyStatus.textContent = teams ? "No modo Times você escolhe os lados ao começar." : "Pronto para começar.";
+  el.lobbyStatus.textContent = teams ? "No modo Times você escolhe os lados ao começar."
+    : state.mode === "2p" ? "Aperte um controle pra entrar · Começar quando prontos."
+    : "Pronto para começar.";
 }
 
 export function onModeChange(v) {
@@ -84,8 +107,9 @@ export function refreshModeSwatches() {   // pílulas de modo herdam as cores re
   el.modeTeams.style.setProperty("--b-h", TEAM_HUES[1]);
 }
 export function onHumansStep(d) { stepSetting("localHumans", d); renderLocalRoster(); }   // muda o nº de humanos e atualiza o preview
-export function onLobbyReady() { if (lobbyKind === "local") deps.startMatch(state.mode); else toggleReady(); }
+export function onLobbyReady() { setLobbyJoin(null); if (lobbyKind === "local") deps.startMatch(state.mode); else toggleReady(); }
 export function onLobbyLeave() {
+  setLobbyJoin(null);
   if (lobbyKind === "local") { audio.uiBack(); showOnly(state.mode === "2p" ? el.multiplayerMenu : el.menu); }
   else leaveLan();
 }

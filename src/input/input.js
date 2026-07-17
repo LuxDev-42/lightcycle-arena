@@ -147,6 +147,12 @@ function bindTurn(id, playerId, side) {
 const GP_DEADZONE = 0.55;
 const gpPrev = [];   // { dir, confirm, back } anterior por controle (detecta aperto novo)
 
+// Lobby local: se setado, um controle NOVO apertando "entra" como jogador. Recebe o
+// índice do controle e retorna true se consumiu o aperto (entrou) — senão o input segue
+// pro fluxo normal (navegar o menu). Setado por openLocalLobby, limpo ao sair/começar.
+let lobbyJoin = null;
+export function setLobbyJoin(fn) { lobbyJoin = fn; }
+
 // Um jogador humano local (0-based) está sendo dirigido por um gamepad conectado?
 // Espelha o mapeamento do pollGamepads. Usado pelo balão "quem é quem".
 export function playerUsesGamepad(humanIndex) {
@@ -179,6 +185,9 @@ function pollGamepads() {
     const confirmEdge = confirm && !prev.confirm;
     const backEdge = back && !prev.back;
     if (confirmEdge || backEdge) audio.resume();   // aperto = gesto: destrava o áudio
+
+    // lobby local: um controle novo apertando entra como jogador (atribuído a ele)
+    if (lobbyJoin && (dirEdge || confirmEdge) && lobbyJoin(i)) { gpPrev[i] = { dir, confirm, back }; continue; }
 
     // controle → jogador: single = P1; ≤2 humanos = pad i → P(i+1); 3+ = teclado é P1/P2, pads viram P3/P4
     let pid;

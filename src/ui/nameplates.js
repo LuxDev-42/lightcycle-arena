@@ -8,6 +8,7 @@ import { el } from "./dom.js";
 import { renderer } from "../engines.js";
 import { CELL, COUNTDOWN_MS } from "../core/config.js";
 import { playerUsesGamepad } from "../input/input.js";
+import { KB_ICON, PAD_ICON } from "./icons.js";
 
 const NAMEPLATE_MS = COUNTDOWN_MS + 600;   // dura a contagem + um respiro, com fade no fim
 let nameplateEls = [];
@@ -45,10 +46,10 @@ function buildNameplates() {
     if (p.tagKeys) {
       const row = document.createElement("div"); row.className = "np-keys";
       if (p.tagKeys === "gamepad") {
-        const kb = document.createElement("kbd"); kb.className = "np-pad"; kb.textContent = "controle"; row.appendChild(kb);
+        row.innerHTML = PAD_ICON;   // ícone de controle
       } else {
         const keys = p.tagKeys === "wasd" ? ["W", "A", "S", "D"] : ["↑", "←", "↓", "→"];
-        for (const k of keys) { const kb = document.createElement("kbd"); kb.textContent = k; row.appendChild(kb); }
+        row.innerHTML = KB_ICON + keys.map((k) => `<kbd>${k}</kbd>`).join("");   // ícone de teclado + teclas
       }
       np.appendChild(row);
     }

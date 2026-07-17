@@ -396,8 +396,8 @@ function closeOptions() {
 function openColors()      { showOnly(el.colorsMenu); }
 function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
-function openMaps()        { showOnly(el.mapsMenu); }
-function openGraphics()    { showOnly(el.graphicsMenu); }
+function openMaps()        { showOnly(el.mapsMenu); previewArena(); }   // mostra a arena atrás (preview)
+function openGraphics()    { showOnly(el.graphicsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openSounds()      { showOnly(el.soundsMenu); }
 function openControls()    { showOnly(el.controlsMenu); }
 function backToOptions()   { showOnly(el.optionsMenu); }

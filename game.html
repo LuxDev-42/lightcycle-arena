@@ -186,6 +186,8 @@
   .lobby-player .pready.on { color: #7CFC00; }
   .lobby-player .pready.off { color: #6a7d8c; }
   .lobby-player.me { border-color: rgba(25,224,255,.5); }
+  .lobby-player .pinput { display: flex; align-items: center; color: #9fb3c0; flex: 0 0 auto; }
+  .lobby-player .pinput .input-ico { width: 22px; height: 22px; }
   .lobby-colors { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 8px 0 18px; }
   .lobby-colors-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
   .lobby-colors-label .swatch { margin-left: 8px; vertical-align: middle; }
@@ -330,7 +332,9 @@
     box-shadow: 0 0 16px var(--pc, #19e0ff), 0 3px 12px rgba(0,0,0,.55); }
   .nameplate.below { transform: translate(-50%, 0); }
   .nameplate .np-label { font-size: 20px; font-weight: 700; letter-spacing: .06em; color: #eaf6ff; text-shadow: 0 0 8px var(--pc, #19e0ff); }
-  .nameplate .np-keys { display: flex; gap: 5px; }
+  .nameplate .np-keys { display: flex; gap: 6px; align-items: center; }
+  .input-ico { width: 20px; height: 20px; display: block; flex: 0 0 auto; }
+  .nameplate .np-keys .input-ico { color: #cdeef7; width: 22px; height: 22px; }
   .nameplate .np-keys kbd { font-family: var(--font-display); font-size: 15px; font-weight: 700; min-width: 24px; padding: 4px 6px;
     text-align: center; color: #cdeef7; background: rgba(25,224,255,0.12); border: 1px solid rgba(180,220,235,0.5); border-radius: 5px; box-shadow: none; }
   .nameplate .np-keys kbd.np-pad { min-width: 0; padding: 4px 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
@@ -428,6 +432,26 @@
 
   /* ---- Nº de adversários (stepper = bloco arredondado único) ---- */
   .advs { display: flex; flex-direction: column; gap: 30px; align-items: center; }
+  /* Menus com preview: painel à direita + fundo transparente (a arena aparece atrás) — Mapas e Gráficos */
+  #maps-menu, #graphics-menu { background: none; backdrop-filter: none; align-items: flex-end; padding: 24px clamp(20px, 5vw, 64px); }
+  #maps-menu .side-panel, #graphics-menu .side-panel { display: flex; flex-direction: column; align-items: center; gap: 22px;
+    padding: 26px 32px; max-width: 360px;
+    background: rgba(3,6,12,0.78); backdrop-filter: blur(3px);
+    border: 1px solid rgba(25,224,255,.22); border-radius: var(--radius); box-shadow: 0 0 26px rgba(0,0,0,.55); }
+  /* Controles (remapear teclas) — lista estilo Warframe: fileira larga (rótulo à esquerda,
+     tecla à direita), padding generoso e uma linha divisória por fileira */
+  #controls-list { width: min(460px, 88vw); margin: 16px auto 22px; border-top: 1px solid rgba(120,150,170,.16); }
+  .ctl-bind { display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    padding: 13px 18px; border-bottom: 1px solid rgba(120,150,170,.16); transition: background .12s; }
+  .ctl-bind:hover, .ctl-bind:has(.ctl-key.nav-focus) { background: rgba(25,224,255,.06); }
+  .ctl-bind-label { font-family: var(--font-display); font-size: 15px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: #9fd4e6; }
+  button.ctl-key { min-width: 66px; padding: 9px 14px; font-family: var(--font-display); font-size: 15px;
+    font-weight: 700; text-align: center; color: #cdeef7; background: rgba(8,14,22,.7);
+    border: 1.5px solid rgba(25,224,255,.35); border-radius: var(--radius); cursor: pointer;
+    transition: border-color .12s, box-shadow .12s, color .12s; }
+  button.ctl-key:hover { border-color: rgba(25,224,255,.7); color: #eaf6ff; }
+  button.ctl-key.capturing { border-color: #19e0ff; color: #19e0ff; box-shadow: 0 0 14px rgba(25,224,255,.5); }
   .adv-ctl { display: flex; flex-direction: column; align-items: center; gap: 14px; }
   .adv-label {
     font-family: var(--font-display); font-size: 13px; letter-spacing: .2em;
@@ -681,52 +705,56 @@
 
   <!-- Submenu: Mapas -->
   <div id="maps-menu" class="overlay hidden">
-    <h2 style="color:#cdd9e6">Mapas</h2>
-    <div class="advs">
-      <div class="adv-ctl">
-        <span class="adv-label">Mapa</span>
-        <div class="stepper">
-          <button class="step-btn" id="map-dec">−</button>
-          <span class="step-val" id="map-val" style="font-size:18px;">Vazio</span>
-          <button class="step-btn" id="map-inc">+</button>
-          <span class="adv-aux" id="map-aux"></span>
+    <div class="side-panel">
+      <h2 style="color:#cdd9e6">Mapas</h2>
+      <div class="advs">
+        <div class="adv-ctl">
+          <span class="adv-label">Mapa</span>
+          <div class="stepper">
+            <button class="step-btn" id="map-dec">−</button>
+            <span class="step-val" id="map-val" style="font-size:18px;">Vazio</span>
+            <button class="step-btn" id="map-inc">+</button>
+            <span class="adv-aux" id="map-aux"></span>
+          </div>
+        </div>
+        <div class="adv-ctl">
+          <span class="adv-label">Tamanho</span>
+          <div class="stepper">
+            <button class="step-btn" id="size-dec">−</button>
+            <span class="step-val" id="size-val" style="font-size:18px;">Média</span>
+            <button class="step-btn" id="size-inc">+</button>
+            <span class="adv-aux" id="size-aux"></span>
+          </div>
         </div>
       </div>
-      <div class="adv-ctl">
-        <span class="adv-label">Tamanho</span>
-        <div class="stepper">
-          <button class="step-btn" id="size-dec">−</button>
-          <span class="step-val" id="size-val" style="font-size:18px;">Média</span>
-          <button class="step-btn" id="size-inc">+</button>
-          <span class="adv-aux" id="size-aux"></span>
-        </div>
+      <div class="btns">
+        <button id="btn-maps-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
       </div>
-    </div>
-    <div class="btns">
-      <button id="btn-maps-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
     </div>
   </div>
 
   <!-- Submenu: Gráficos -->
   <div id="graphics-menu" class="overlay hidden">
-    <h2 style="color:#cdd9e6">Gráficos</h2>
-    <div class="advs">
-      <div class="adv-ctl">
-        <span class="adv-label">Qualidade</span>
-        <div class="stepper">
-          <button class="step-btn" id="gfx-dec">−</button>
-          <span class="step-val" id="gfx-val" style="font-size:18px;">Auto</span>
-          <button class="step-btn" id="gfx-inc">+</button>
-          <span class="adv-aux" id="gfx-aux"></span>
+    <div class="side-panel">
+      <h2 style="color:#cdd9e6">Gráficos</h2>
+      <div class="advs">
+        <div class="adv-ctl">
+          <span class="adv-label">Qualidade</span>
+          <div class="stepper">
+            <button class="step-btn" id="gfx-dec">−</button>
+            <span class="step-val" id="gfx-val" style="font-size:18px;">Auto</span>
+            <button class="step-btn" id="gfx-inc">+</button>
+            <span class="adv-aux" id="gfx-aux"></span>
+          </div>
+        </div>
+        <div class="adv-ctl">
+          <span class="adv-label">Tela cheia</span>
+          <button id="btn-fullscreen" class="switch" role="switch" aria-checked="false" aria-label="Tela cheia"><span class="switch-knob"></span></button>
         </div>
       </div>
-      <div class="adv-ctl">
-        <span class="adv-label">Tela cheia</span>
-        <button id="btn-fullscreen" class="switch" role="switch" aria-checked="false" aria-label="Tela cheia"><span class="switch-knob"></span></button>
+      <div class="btns">
+        <button id="btn-graphics-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
       </div>
-    </div>
-    <div class="btns">
-      <button id="btn-graphics-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
     </div>
   </div>
 
