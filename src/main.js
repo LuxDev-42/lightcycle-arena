@@ -28,12 +28,12 @@ import {
 } from "./net/lan-client.js";
 import {
   openLobby, openLocalLobby, onModeChange, refreshModeSwatches, onLobbyReady, onLobbyLeave,
-  lobbyHueInput, lobbyNameInput, renderLobby, renderLocalRoster, onHumansStep, lobbyKind, initLobby,
+  lobbyHueInput, lobbyNameInput, renderLobby, renderLocalRoster, lobbyKind, initLobby,
 } from "./ui/lobby.js";
 import { defineSetting, setSetting, stepSetting, settings } from "./ui/settings.js";
 import { registerMenu, bindHover, showOnly, navBtn, navSlider, navStepper, navInput, syncNavTo, refreshNav } from "./ui/menu-nav.js";
 import { showAresIntro, updateAresTerminal, isTerminalActive, stopTerminal, loadAresTerminalLines } from "./intro/ares-intro.js";
-import { initInput, setLanSteer, setTeamSelect } from "./input/input.js";
+import { initInput, setLanSteer, setTeamSelect, connectedGamepadCount } from "./input/input.js";
 import { playIntro, skipIntro } from "./intro/title-intro.js";
 import { serializePlayers, applyPlayers } from "./net/lan-sync.js";
 
@@ -110,7 +110,6 @@ function defineSettings() {
     el.modeTeams.classList.toggle("active", v === 1);
     if (!app.running) state.gameMode = v === 1 ? "teams" : "ffa";   // em partida: só vale na próxima
   } });
-  defineSetting("localHumans", { ls: "lc.localHumans", def: 2, min: 2, max: 4, apply: (v) => { el.lhVal.textContent = v; } });
 }
 
 // ---- Roster / round ----
@@ -120,7 +119,7 @@ function configureRoster(mode) {
   state.mode = mode;
   state.difficulty = settings.difficulty;
   state.gameMode = (!state.ares && settings.gameMode === 1) ? "teams" : "ffa";   // ARES é sempre FFA
-  const humans = mode === "2p" ? (settings.localHumans ?? 2) : 1;   // multiplayer local: 2-4 humanos
+  const humans = mode === "2p" ? Math.min(4, 2 + connectedGamepadCount()) : 1;   // 2 (teclado) + 1 por gamepad conectado
   state.humans = humans;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
@@ -131,6 +130,10 @@ function configureRoster(mode) {
     const label = !isAI ? `P${i + 1}` : (state.ares ? "ARES" : (cpuCount > 1 ? `CPU ${i - humans + 1}` : "CPU"));
     state.roster.push({ isAI, label, team: state.gameMode === "teams" ? (i % 2) : -1 });   // times alternados
   }
+  // CPUs: cor aleatória por partida (spread rotacionado → matizes distintas) que define a personalidade da IA
+  const cpuBase = Math.random() * 360;
+  let cpuSeen = 0;
+  for (const r of state.roster) if (r.isAI) { r.hue = Math.round((cpuBase + cpuSeen * (360 / Math.max(1, cpuCount))) % 360); cpuSeen++; }
   state.scores = new Array(total).fill(0);
   state.teamScores = [0, 0];
 }
@@ -149,7 +152,8 @@ function resetRound() {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
       : (state.gameMode === "teams" ? teamSkin(r.team, i)                       // modo times: cor do time
       : (lan.hues && lan.hues[i] != null ? { color: hueColor(lan.hues[i]), glow: hueGlow(lan.hues[i]), hue: lan.hues[i] }  // LAN: cor do lobby (humanos)
-      : skinForIndex(i, total)));                                               // CPUs / local: matiz espalhada
+      : (r.isAI && r.hue != null ? { color: hueColor(r.hue), glow: hueGlow(r.hue), hue: r.hue }   // CPU: cor aleatória (define a personalidade)
+      : skinForIndex(i, total))));                                              // humanos locais: matiz das cores escolhidas
     const p = makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
     p.team = r.team ?? -1;
     return p;
@@ -392,9 +396,7 @@ function closeOptions() {
     return;
   }
   showOnly(el.menu);
-}
-function openColors()      { showOnly(el.colorsMenu); }
-function openAudio()       { showOnly(el.audioMenu); }
+}function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
 function openMaps()        { showOnly(el.mapsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openGraphics()    { showOnly(el.graphicsMenu); previewArena(); }   // mostra a arena atrás (preview)
@@ -509,8 +511,7 @@ function aresEnd() {
 }
 
 // Esc / botão de sair: depende da fase (no menu volta um nível; no ARES trava até a 1ª morte).
-const isOpenSub = () => !el.colorsMenu.classList.contains("hidden")
-  || !el.audioMenu.classList.contains("hidden")
+const isOpenSub = () => !el.audioMenu.classList.contains("hidden")
   || !el.advMenu.classList.contains("hidden")
   || !el.mapsMenu.classList.contains("hidden")
   || !el.graphicsMenu.classList.contains("hidden")
@@ -558,8 +559,7 @@ function buildNav() {
   registerMenu(el.lanMenu, [navBtn("btn-lan-create"), navBtn("btn-lan-find"), navBtn("btn-lan-back")]);
   registerMenu(el.lanFind, [navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")]);
   registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
-  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-colors"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
-  registerMenu(el.colorsMenu, [navSlider(el.hue1, 8), navSlider(el.hue2, 8), navBtn("btn-colors-back")]);
+  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
   registerMenu(el.advMenu, [
     navStepper(el.spVal.closest(".stepper"), () => stepSetting("spCpus", -1), () => stepSetting("spCpus", 1)),
@@ -631,8 +631,6 @@ function wireControls() {
   document.addEventListener("webkitfullscreenchange", syncFullscreenLabel);
   syncFullscreenLabel();
   document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
-  document.getElementById("btn-colors").addEventListener("click", openColors);
-  document.getElementById("btn-colors-back").addEventListener("click", backToOptions);
   document.getElementById("btn-audio").addEventListener("click", openAudio);
   document.getElementById("btn-audio-back").addEventListener("click", backToOptions);
   document.getElementById("btn-again").addEventListener("click", again);
@@ -649,13 +647,9 @@ function wireControls() {
   document.getElementById("mp-inc").addEventListener("click", () => stepSetting("mpCpus", 1));
   document.getElementById("diff-dec").addEventListener("click", () => stepSetting("difficulty", -1));
   document.getElementById("diff-inc").addEventListener("click", () => stepSetting("difficulty", 1));
-  document.getElementById("lh-dec").addEventListener("click", () => onHumansStep(-1));
-  document.getElementById("lh-inc").addEventListener("click", () => onHumansStep(1));
   el.modeFfa.addEventListener("click", () => onModeChange(0));
   el.modeTeams.addEventListener("click", () => onModeChange(1));
 
-  el.hue1.addEventListener("input", () => { refreshColorUI(); refreshModeSwatches(); });
-  el.hue2.addEventListener("input", refreshColorUI);
   el.musicVol.addEventListener("input", () => setSetting("music", +el.musicVol.value / 100));
   el.sfxVol.addEventListener("input", () => setSetting("sfx", +el.sfxVol.value / 100));
   el.sfxVol.addEventListener("change", () => { audio.resume(); audio.blip(); });

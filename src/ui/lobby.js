@@ -7,12 +7,12 @@
 import { state } from "../core/state.js";
 import { audio } from "../engines.js";
 import { el } from "./dom.js";
-import { hueColor, skinForIndex } from "./colors.js";
-import { TEAM_HUES } from "./teams.js";
-import { setSetting, stepSetting } from "./settings.js";
-import { registerMenu, showOnly, navBtn, navSlider, navStepper, navInput } from "./menu-nav.js";
+import { hueColor, skinForIndex, getHumanHue, setHumanHue } from "./colors.js";
+import { TEAM_HUES, teamSkin } from "./teams.js";
+import { setSetting } from "./settings.js";
+import { registerMenu, showOnly, navBtn, navSlider, navStepper, navInput, refreshNav, enableMultiCursor, getMultiCursors } from "./menu-nav.js";
 import { inputIcon } from "./icons.js";
-import { setLanSteer, setLobbyJoin, playerUsesGamepad } from "../input/input.js";
+import { setLanSteer, setLobbyJoin, setGamepadCountHandler, playerUsesGamepad } from "../input/input.js";
 import { lan, lanAvailable, currentMatchConfig, getProfileName, setProfileName, leaveLan } from "../net/lan-client.js";
 
 export let lobbyKind = "lan";   // "lan" | "local"
@@ -20,21 +20,28 @@ export let lobbyKind = "lan";   // "lan" | "local"
 let deps = {};
 export function initLobby(injected) { deps = injected; }   // { startMatch, configureRoster }
 
-// Multiplayer local: um controle NOVO apertando "entra" como jogador (atribuído a ele).
-let joinedPads = new Set();
-function onGamepadJoin(padIndex) {
-  if (joinedPads.has(padIndex)) return false;      // já entrou → o input segue pra navegar o menu
-  if ((state.humans || 2) >= 4) return false;      // lotado (máx 4)
-  joinedPads.add(padIndex);
-  stepSetting("localHumans", 1);                   // +1 jogador (o controle vira o próximo Pn)
+
+// Sliders de cor por humano (elementos) — pra montar os itens de navegação (um dono cada).
+let humanColorEls = [];
+// Multi-cursor no lobby local: um cursor por humano, na cor de cada um (preserva posições em `prev`).
+function enableMultiForLobby(prev) {
+  const colors = {};
+  const humans = state.humans || 2;
+  for (let i = 0; i < humans; i++) colors[i + 1] = hueColor(getHumanHue(i));
+  enableMultiCursor(colors, prev);
+}
+// Refaz roster + nav quando muda nº de jogadores / modo — sem perder a posição do cursor de cada um.
+function relayoutLocalLobby() {
+  const prev = getMultiCursors();
   renderLocalRoster();
-  audio.uiSelect();
-  return true;
+  registerLobbyNav();
+  refreshNav();                                       // re-filtra os itens (sliders entram/saem)
+  if (state.mode === "2p") enableMultiForLobby(prev);
 }
 
 export function openLobby() {   // LAN
   lobbyKind = "lan";
-  setLobbyJoin(null);   // "entrar apertando" é só do multiplayer local
+  setLobbyJoin(null); setGamepadCountHandler(null);   // recontar gamepad é só do multiplayer local
   el.lobbyTitle.textContent = "Lobby";
   el.lobbyName.value = getProfileName();
   el.lobbyHue.value = lan.state.myHue;
@@ -50,13 +57,14 @@ export function openLocalLobby(mode) {   // singleplayer / multiplayer local
   lobbyKind = "local";
   lan.role = null; lan.hues = null; setLanSteer(null);   // garante que o modo LAN está desligado
   state.mode = mode;
-  joinedPads = new Set();
-  setLobbyJoin(mode === "2p" ? onGamepadJoin : null);   // multiplayer local: controle entra apertando
+  setLobbyJoin(null);
+  setGamepadCountHandler(mode === "2p" ? relayoutLocalLobby : null);   // (des)conectar controle recompõe os jogadores
   el.lobbyTitle.textContent = mode === "2p" ? "Multiplayer Local" : "1 Jogador";
   setLobbyKindUI();
   renderLocalRoster();
   registerLobbyNav();
   showOnly(el.lobby);
+  if (mode === "2p") enableMultiForLobby();   // multi-cursor (um por jogador); singleplayer = cursor único
 }
 
 // Ajusta o que aparece no lobby conforme o tipo (LAN x local) e o papel (host x cliente).
@@ -66,7 +74,7 @@ function setLobbyKindUI() {
   el.lobbyNameField.style.display = isLan ? "" : "none";   // nome/cor de rede: só no LAN
   el.lobbyColors.style.display = isLan ? "" : "none";
   el.modeSeg.style.display = showMode ? "" : "none";
-  el.lobbyHumans.style.display = (!isLan && state.mode !== "cpu") ? "" : "none";   // nº de humanos: só no multiplayer local
+  el.lobbyHumans.style.display = "none";   // nº de jogadores agora é automático (2 teclado + 1 por gamepad)
   el.btnLobbyOptions.style.display = showMode ? "" : "none";
   el.btnLobbyReady.textContent = isLan ? "Pronto" : "Começar";
   el.btnLobbyLeave.querySelector(".btn-label").textContent = isLan ? "Sair" : "Voltar";
@@ -78,8 +86,11 @@ export function renderLocalRoster() {
   const teams = state.gameMode === "teams";
   const total = state.roster.length;
   el.lobbyPlayers.innerHTML = "";
+  humanColorEls = [];
   state.roster.forEach((r, i) => {
-    const c = hueColor(skinForIndex(i, total).hue);
+    // mesma cor da partida: Times = cor do time; CPU = cor aleatória (r.hue); humano = cor escolhida
+    const hue = teams ? teamSkin(r.team, i).hue : (r.isAI ? r.hue : skinForIndex(i, total).hue);
+    const c = hueColor(hue);
     const row = document.createElement("div"); row.className = "lobby-player";
     const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = c; dot.style.boxShadow = `0 0 8px ${c}`;
     const name = document.createElement("span"); name.className = "pname"; name.textContent = r.label;
@@ -88,6 +99,20 @@ export function renderLocalRoster() {
       const ico = document.createElement("span"); ico.className = "pinput";
       ico.innerHTML = inputIcon(playerUsesGamepad(i) ? "gamepad" : "keyboard");
       row.appendChild(ico);
+      if (!teams) {   // slider de cor próprio (no Times a cor é do time, sem escolha individual)
+        const slider = document.createElement("input");
+        slider.type = "range"; slider.min = "0"; slider.max = "360"; slider.className = "hue pcolor";
+        slider.value = String(hue);
+        slider.style.setProperty("--thumb", c);
+        slider.addEventListener("input", () => {
+          const h = +slider.value, cc = hueColor(h);
+          setHumanHue(i, h);   // persiste + refreshColorUI (título/pílulas)
+          slider.style.setProperty("--thumb", cc);
+          dot.style.background = cc; dot.style.boxShadow = `0 0 8px ${cc}`;
+        });
+        row.appendChild(slider);
+        humanColorEls[i] = slider;
+      }
     }
     el.lobbyPlayers.appendChild(row);
   });
@@ -99,17 +124,16 @@ export function renderLocalRoster() {
 export function onModeChange(v) {
   setSetting("gameMode", v);   // apply acende as pílulas + ajusta state.gameMode (fora de partida)
   if (lobbyKind === "lan") { if (lan.state.isHost && lanAvailable()) window.lan.setMatch(currentMatchConfig()); }
-  else renderLocalRoster();
+  else relayoutLocalLobby();
 }
 export function refreshModeSwatches() {   // pílulas de modo herdam as cores reais: P1 (hue1) no FFA, TEAM_HUES no Times
-  el.modeFfa.style.setProperty("--ffa-h", +el.hue1.value);
+  el.modeFfa.style.setProperty("--ffa-h", getHumanHue(0));
   el.modeTeams.style.setProperty("--a-h", TEAM_HUES[0]);
   el.modeTeams.style.setProperty("--b-h", TEAM_HUES[1]);
 }
-export function onHumansStep(d) { stepSetting("localHumans", d); renderLocalRoster(); }   // muda o nº de humanos e atualiza o preview
-export function onLobbyReady() { setLobbyJoin(null); if (lobbyKind === "local") deps.startMatch(state.mode); else toggleReady(); }
+export function onLobbyReady() { setGamepadCountHandler(null); if (lobbyKind === "local") deps.startMatch(state.mode); else toggleReady(); }
 export function onLobbyLeave() {
-  setLobbyJoin(null);
+  setLobbyJoin(null); setGamepadCountHandler(null);
   if (lobbyKind === "local") { audio.uiBack(); showOnly(state.mode === "2p" ? el.multiplayerMenu : el.menu); }
   else leaveLan();
 }
@@ -141,8 +165,8 @@ function toggleReady() {
 }
 function registerLobbyNav() {
   const nav = [];
-  if (lobbyKind === "local" || lan.state.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));
-  if (lobbyKind === "local" && state.mode !== "cpu") nav.push(navStepper(el.lhVal.closest(".stepper"), () => onHumansStep(-1), () => onHumansStep(1)));
+  if (lobbyKind === "local" || lan.state.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));   // ←/→ alterna o modo
+  if (lobbyKind === "local") humanColorEls.forEach((sl, i) => { if (sl) nav.push(navSlider(sl, 8, i + 1)); });   // slider de cor de cada humano (dono = pid; outro → erro)
   if (lobbyKind === "lan") { nav.push(navInput(el.lobbyName)); nav.push(navSlider(el.lobbyHue, 8)); }   // nome navegável por teclado (Enter edita)
   nav.push(navBtn("btn-lobby-ready"));
   if (lobbyKind === "local" || lan.state.isHost) nav.push(navBtn("btn-lobby-options"));

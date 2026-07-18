@@ -5,7 +5,8 @@ import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, renderer, music } from "../engines.js";
 import { DIRS, OPPOSITE } from "../core/config.js";
-import { navMove, navHorizontal, activateNav, isNavActive, refreshNav } from "../ui/menu-nav.js";
+import { navMove, navHorizontal, activateNav, isNavActive, refreshNav,
+  isMultiCursor, navMovePlayer, navHorizontalPlayer, activatePlayer } from "../ui/menu-nav.js";
 
 // Teclas remapeáveis (persistidas em localStorage). Ação "pN-dir" → tecla; o KEYMAP
 // (tecla → [playerId, dir]) é reconstruído daí. Defaults: P1 = WASD, P2 = setas.
@@ -114,6 +115,20 @@ function onKeyDown(event) {
   }
   if (isNavActive()) {   // navegação dos menus
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+    if (isMultiCursor()) {   // lobby local: cada teclado é um jogador (P1=WASD+Espaço, P2=setas+Enter)
+      event.preventDefault();
+      if (key === "w") navMovePlayer(1, "up");
+      else if (key === "s") navMovePlayer(1, "down");
+      else if (key === "a") navHorizontalPlayer(1, -1);
+      else if (key === "d") navHorizontalPlayer(1, 1);
+      else if (key === "arrowup") navMovePlayer(2, "up");
+      else if (key === "arrowdown") navMovePlayer(2, "down");
+      else if (key === "arrowleft") navHorizontalPlayer(2, -1);
+      else if (key === "arrowright") navHorizontalPlayer(2, 1);
+      else if (key === " " || key === "spacebar") activatePlayer(1);
+      else if (key === "enter") activatePlayer(2);
+      return;
+    }
     if (key === "w" || key === "arrowup") { event.preventDefault(); navMove("up"); }
     else if (key === "s" || key === "arrowdown") { event.preventDefault(); navMove("down"); }
     else if (key === "a" || key === "arrowleft") { event.preventDefault(); navHorizontal(-1); }
@@ -152,6 +167,15 @@ const gpPrev = [];   // { dir, confirm, back } anterior por controle (detecta ap
 // pro fluxo normal (navegar o menu). Setado por openLocalLobby, limpo ao sair/começar.
 let lobbyJoin = null;
 export function setLobbyJoin(fn) { lobbyJoin = fn; }
+
+// Nº de gamepads conectados (o navegador só expõe o controle após um aperto, então
+// "conectado" = de fato em uso). Base do nº de jogadores locais: 2 (teclado) + isto.
+export function connectedGamepadCount() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let n = 0; for (const p of pads) if (p) n++; return n;
+}
+let onGamepadCount = null;
+export function setGamepadCountHandler(fn) { onGamepadCount = fn; }   // chamado ao conectar/desconectar controle
 
 // Um jogador humano local (0-based) está sendo dirigido por um gamepad conectado?
 // Espelha o mapeamento do pollGamepads. Usado pelo balão "quem é quem".
@@ -199,11 +223,19 @@ function pollGamepads() {
       else if (dirEdge && dir === "right") teamSelectFn && teamSelectFn(pid, 1);
       if (confirmEdge) teamSelectFn && teamSelectFn(0, "confirm");
     } else if (isNavActive()) {
-      if (dirEdge) {
-        if (dir === "up") navMove("up"); else if (dir === "down") navMove("down");
-        else if (dir === "left") navHorizontal(-1); else if (dir === "right") navHorizontal(1);
+      if (isMultiCursor()) {   // lobby local: cada controle move o SEU cursor e mexe na SUA cor
+        if (dirEdge) {
+          if (dir === "up") navMovePlayer(pid, "up"); else if (dir === "down") navMovePlayer(pid, "down");
+          else if (dir === "left") navHorizontalPlayer(pid, -1); else if (dir === "right") navHorizontalPlayer(pid, 1);
+        }
+        if (confirmEdge) activatePlayer(pid);
+      } else {
+        if (dirEdge) {
+          if (dir === "up") navMove("up"); else if (dir === "down") navMove("down");
+          else if (dir === "left") navHorizontal(-1); else if (dir === "right") navHorizontal(1);
+        }
+        if (confirmEdge) activateNav();
       }
-      if (confirmEdge) activateNav();
       if (backEdge) onEscape();
     } else {
       if (dirEdge) steer(pid, dir);   // em partida: vira o próprio jogador
@@ -232,4 +264,6 @@ export function initInput(handlers) {
   window.addEventListener("blur", () => heldKeys.clear());   // evita teclas "presas" ao perder o foco
 
   if (navigator.getGamepads) requestAnimationFrame(gamepadLoop);   // loop próprio (funciona no menu e em jogo)
+  window.addEventListener("gamepadconnected", () => onGamepadCount && onGamepadCount());       // (des)conectar controle → recontar jogadores no lobby
+  window.addEventListener("gamepaddisconnected", () => onGamepadCount && onGamepadCount());
 }

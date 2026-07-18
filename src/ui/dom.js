@@ -10,7 +10,6 @@ export const el = {
   // Overlays de menu (controlados por showOnly)
   menu: $("menu"),
   optionsMenu: $("options-menu"),
-  colorsMenu: $("colors-menu"),
   audioMenu: $("audio-menu"),
   advMenu: $("adversaries-menu"),
   mapsMenu: $("maps-menu"),
@@ -56,13 +55,6 @@ export const el = {
   resultScore: $("result-score"),
   keysInfo: $("keys-info"),
 
-  // Cores
-  hue1: $("hue1"),
-  hue2: $("hue2"),
-  sw1: $("sw1"),
-  sw2: $("sw2"),
-  cdot1: $("cdot1"),
-  cdot2: $("cdot2"),
   btnCpu: $("btn-cpu"),
   btn2p: $("btn-multiplayer"),   // botão Multiplayer herda o tom do P2 (config)
   btnLanFind: $("btn-lan-find"),

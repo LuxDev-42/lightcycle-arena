@@ -188,6 +188,7 @@
   .lobby-player.me { border-color: rgba(25,224,255,.5); }
   .lobby-player .pinput { display: flex; align-items: center; color: #9fb3c0; flex: 0 0 auto; }
   .lobby-player .pinput .input-ico { width: 22px; height: 22px; }
+  .lobby-player .pcolor { flex: 0 0 108px; margin-left: 6px; }   /* slider de cor do jogador no lobby local */
   .lobby-colors { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 8px 0 18px; }
   .lobby-colors-label { font-size: 13px; color: #9fd4e6; letter-spacing: .12em; text-transform: uppercase; }
   .lobby-colors-label .swatch { margin-left: 8px; vertical-align: middle; }
@@ -235,6 +236,14 @@
 
   /* realce da navegação por teclado (WASD/setas) */
   .nav-focus { outline: 2px solid #bff4ff; outline-offset: 4px; }
+  /* Multi-cursor (lobby local): anéis CONCÊNTRICOS (um por jogador na sua cor) desenhados via
+     box-shadow no próprio elemento (funciona até em <input>); posição/z-index só pra não serem cobertos */
+  .nav-multi { position: relative; z-index: 2; }
+  /* Flash de "negado" (ex.: tentar mexer na cor de outro jogador no lobby) — funciona sem o loop de jogo */
+  #err-flash { position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(255,0,0,0.5) 100%); }
+  #err-flash.on { animation: err-flash 0.4s ease-out; }
+  @keyframes err-flash { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0; } }
   button.nav-focus { box-shadow: 0 0 26px currentColor; }
   .stepper.nav-focus { outline-offset: 7px; }
   /* sliders têm outline:none próprio — precisa de mais especificidade pra realçar */
@@ -659,7 +668,6 @@
       <button id="btn-maps" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>Mapas</button>
       <button id="btn-graphics" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M9 21h6M12 17v4"/></svg>Gráficos</button>
       <button id="btn-audio" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5v5h3l4.5 3.5v-12L8 9.5H5z"/><path d="M16 9.5a4 4 0 0 1 0 5"/></svg>Áudio</button>
-      <button id="btn-colors" class="neutral"><span class="color-dots"><span class="color-dot" id="cdot1"></span><span class="color-dot" id="cdot2"></span></span>Cores</button>
       <button id="btn-sounds" class="neutral debug-only"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5v5h3l4.5 3.5v-12L8 9.5H5z"/><path d="M16 9.5a4 4 0 0 1 0 5"/></svg>Sons (debug)</button>
       <button id="btn-controls" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>Controles</button>
       <button id="btn-options-back" class="neutral" style="margin-top:10px;"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
@@ -779,22 +787,6 @@
   </div>
 
   <!-- Submenu de cores -->
-  <div id="colors-menu" class="overlay hidden">
-    <h2 style="color:#cdd9e6">Cores</h2>
-    <div class="colors">
-      <div class="color-ctl">
-        <span class="lab">Jogador 1 <span class="swatch" id="sw1"></span></span>
-        <input type="range" id="hue1" class="hue" min="0" max="360" value="190" />
-      </div>
-      <div class="color-ctl">
-        <span class="lab">Jogador 2 <span class="swatch" id="sw2"></span></span>
-        <input type="range" id="hue2" class="hue" min="0" max="360" value="30" />
-      </div>
-    </div>
-    <div class="btns">
-      <button id="btn-colors-back" class="neutral"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7"/><path d="M4 12h16"/></svg>Voltar <span class="hotkey">Esc</span></button>
-    </div>
-  </div>
 
   <!-- Submenu de áudio -->
   <div id="audio-menu" class="overlay hidden">
@@ -866,6 +858,7 @@
   <!-- Fade pra branco (fim do modo ARES) -->
   <div id="fade"></div>
   <div id="nameplates"></div>
+  <div id="err-flash"></div>
 
   <!-- Trilha sonora -->
   <audio id="bgm" preload="auto"></audio>

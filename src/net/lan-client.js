@@ -9,7 +9,7 @@ import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, music, renderer } from "../engines.js";
 import { OPPOSITE, WIN_SCORE, SHAKE_DEATH, ARENA_SIZES, COLS, buildArenaLayout, setArenaSize } from "../core/config.js";
-import { hueColor } from "../ui/colors.js";
+import { hueColor, getHumanHue } from "../ui/colors.js";
 import { settings } from "../ui/settings.js";
 import { el } from "../ui/dom.js";
 import { showOnly, registerMenu, navBtn, refreshNav } from "../ui/menu-nav.js";
@@ -67,7 +67,7 @@ function onNetMessage(msg) {
 // ---- Descoberta / entrada ----
 export async function createSession() {
   if (!lanAvailable()) return;
-  const hue = +el.hue1.value;
+  const hue = getHumanHue(0);
   lan.state = { active: true, isHost: true, youId: null, players: [], myHue: hue, myColor: hueColor(hue), mySlot: 0 };
   const info = await window.lan.create({ name: "Sala de " + getProfileName(), playerName: getProfileName(), color: lan.state.myColor, match: currentMatchConfig() });
   lan.state.youId = info.youId;
@@ -76,7 +76,7 @@ export async function createSession() {
 }
 export async function joinSessionEntry(session) {
   if (!lanAvailable()) return;
-  const hue = +el.hue2.value;
+  const hue = getHumanHue(0);
   lan.state = { active: true, isHost: false, youId: null, players: [], myHue: hue, myColor: hueColor(hue), mySlot: 0 };
   await window.lan.join(session, { playerName: getProfileName(), color: lan.state.myColor });
   deps.openLobby();

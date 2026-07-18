@@ -41,6 +41,23 @@ const FILL_TURN_FACTOR = 0.35; // (isolado) fração do TURN_PENALTY — curva m
 const VIOLENCE_TURN_EXTRA = 0.4;  // ARES: penalidade de curva extra (effTurn = TURN_PENALTY*(1+isto*violenceRamp))
 const CUT_TURN_BIAS = 30;      // ARES: vies que faz o corte preferir reto (×violenceRamp) — curva no corte só se valer mais
 
+// Personalidade da IA derivada da COR (matiz) do bot — multiplicadores sobre os knobs.
+// A cor vira comportamento visível: vermelho = agressivo, verde = territorial, azul =
+// defensivo, magenta = caçador. Afeta só o combate normal (ARES/minimax ficam à parte).
+const PERSONAS = {
+  aggressive:  { violenceMul: 1.5,  chaseMul: 1.3, turnMul: 0.85, cutMul: 1.4 },
+  territorial: { violenceMul: 0.85, chaseMul: 0.7, turnMul: 1.15, cutMul: 0.8 },
+  defensive:   { violenceMul: 0.55, chaseMul: 0.5, turnMul: 1.25, cutMul: 0.6 },
+  hunter:      { violenceMul: 1.3,  chaseMul: 1.7, turnMul: 1.0,  cutMul: 1.0 },
+};
+export function personalityForHue(hue) {
+  const h = ((hue % 360) + 360) % 360;
+  if (h < 40 || h >= 340) return PERSONAS.aggressive;   // vermelho/laranja
+  if (h < 160) return PERSONAS.territorial;             // amarelo/verde
+  if (h < 260) return PERSONAS.defensive;               // ciano/azul
+  return PERSONAS.hunter;                               // roxo/magenta
+}
+
 // BFS multi-fonte a partir da cabeça do bot (myX,myY) E das cabeças oponentes ao
 // mesmo tempo. Cada célula livre fica com quem chega primeiro; empate de distância
 // = contestada (não conta p/ ninguém). Devolve { mine, theirs } em nº de células.
@@ -153,8 +170,10 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
   // pra preencher a região sem fragmentá-la (vence mais finais).
   const isolated = !hasOpp || !cand.some(c => c.reachable);
   // só o ARES (violence alto) curva menos: violenceRamp = 0 no normal (<=0.6) e 1 no ARES (1.0)
-  const violenceRamp = Math.max(0, (violence - 0.6) / 0.4);
-  const effTurn = TURN_PENALTY * (1 + VIOLENCE_TURN_EXTRA * violenceRamp);
+  const violenceRamp = Math.max(0, (violence - 0.6) / 0.4);   // ARES-only (não escala com personalidade)
+  const pers = personalityForHue(bot.hue ?? 200);             // personalidade pela cor do bot
+  const v = clamp(violence * pers.violenceMul, 0, 1);         // agressão efetiva (combate normal)
+  const effTurn = TURN_PENALTY * pers.turnMul * (1 + VIOLENCE_TURN_EXTRA * violenceRamp);
 
   for (const c of cand) {
     let score;
@@ -162,10 +181,10 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
       score = c.mine + WALL_HUG_BONUS * c.wallHug;
       if (c.isTurn) score -= TURN_PENALTY * FILL_TURN_FACTOR;  // curva mais livre pra serpentear
     } else {
-      score = c.mine - violence * c.theirs;                    // território próprio − (agressão × território deles)
-      if (c.isTurn) score -= effTurn;                          // ARES paga mais caro por curvar → mantém a velocidade
-      if (c.dNext < oppDist) score += violence * CHASE_BONUS;  // caça: aproximar-se compensa a curva
-      if (!c.reachable) score -= violence * SEAL_PENALTY;      // pathfinding: não se isole do oponente
+      score = c.mine - v * c.theirs;                           // território próprio − (agressão × território deles)
+      if (c.isTurn) score -= effTurn;                          // curva custa (personalidade ajusta) → mantém velocidade
+      if (c.dNext < oppDist) score += v * CHASE_BONUS * pers.chaseMul;  // caça: aproximar-se compensa a curva
+      if (!c.reachable) score -= v * SEAL_PENALTY;             // pathfinding: não se isole do oponente
     }
     if (c.mine < MIN_SAFE_SPACE) score -= 5000;                // piso de sobrevivência: não se enforca
     c.score = score + Math.random() * NOISE;
@@ -210,7 +229,7 @@ export function chooseDirection(bot, players, grid, violence = 0.2) {
       const cost = c.theirs + (c.isTurn ? CUT_TURN_BIAS * violenceRamp : 0);   // ARES prefere cortes RETOS (curva só se valer muito mais)
       if (cost < cutCost) { cutCost = cost; cut = c; }
     }
-    const cutChance = clamp(0.08 + violence * 0.35, 0, 0.55);
+    const cutChance = clamp((0.08 + v * 0.35) * pers.cutMul, 0, 0.6);
     if (cut && cut !== best && (cut.theirs <= best.theirs - CUT_GAIN_MIN || Math.random() < cutChance)) return cut.dir;
   }
   return cand[0].dir;
