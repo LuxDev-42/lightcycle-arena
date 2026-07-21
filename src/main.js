@@ -8,13 +8,14 @@ import {
   WIN_SCORE, COUNTDOWN_MS, ARES_CHANCE, ARES_FADE_MS,
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
+  CPU_CHARACTERS, CPU_FILLERS,
 } from "./core/config.js";
 import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./core/logic.js";
 import { el } from "./ui/dom.js";
 import { app } from "./core/app.js";
 import { state } from "./core/state.js";
 import { renderer, audio, music } from "./engines.js";
-import { refreshColorUI, applyColors, skinForIndex, aresSkin, hueColor, hueGlow } from "./ui/colors.js";
+import { refreshColorUI, applyColors, skinForIndex, aresSkin, cpuSkin, hueColor, hueGlow } from "./ui/colors.js";
 import { TEAM_HUES, teamSkin } from "./ui/teams.js";
 import { renderScoreboard, scoreChips, teamScoreChips } from "./ui/scoreboard.js";
 import { setNameplates, updateNameplates, hideNameplates } from "./ui/nameplates.js";
@@ -39,8 +40,8 @@ import { serializePlayers, applyPlayers } from "./net/lan-sync.js";
 
 // ---- Settings: definições (label + persistência + efeito) ----
 const MUSIC_VOLUME_MULT = 0.5;                              // teto permanente do volume da música (50%)
-const DIFF_NAMES = ["", "fácil", "médio", "difícil"];
-const DIFF_COLORS = ["", "#46e07a", "#e8eef3", "#ff8a1e"]; // 1 verde · 2 neutro · 3 laranja
+const DIFF_NAMES = ["", "fácil", "médio", "difícil", "sádico"];
+const DIFF_COLORS = ["", "#46e07a", "#e8eef3", "#ff8a1e", "#ff2a4d"]; // 1 verde · 2 neutro · 3 laranja · 4 carmesim (sádico)
 const GFX_MODES = ["auto", "alto", "baixo"];
 const GFX_NAMES = ["Auto", "Alto", "Baixo"];
 const GFX_HINTS = ["detecta o aparelho", "tudo ligado", "mais FPS"];
@@ -72,7 +73,7 @@ function defineSettings() {
   } });
   defineSetting("spCpus", { ls: "lc.spCpus", def: 1, min: 1, max: 9, apply: (v) => { el.spVal.textContent = v; } });
   defineSetting("mpCpus", { ls: "lc.mpCpus", def: 0, min: 0, max: 8, apply: (v) => { el.mpVal.textContent = v; } });
-  defineSetting("difficulty", { ls: "lc.diff", def: 2, min: 1, max: 3, apply: (v) => {
+  defineSetting("difficulty", { ls: "lc.diff", def: 2, min: 1, max: 4, apply: (v) => {   // 4 = sádico (violence 0.8 → liga o minimax)
     state.difficulty = v;
     el.diffVal.textContent = v;
     el.diffAux.textContent = DIFF_NAMES[v];
@@ -123,19 +124,40 @@ function configureRoster(mode) {
   state.humans = humans;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
-  const cpuCount = total - humans;
   state.roster = [];
   for (let i = 0; i < total; i++) {
     const isAI = i >= humans;
-    const label = !isAI ? `P${i + 1}` : (state.ares ? "ARES" : (cpuCount > 1 ? `CPU ${i - humans + 1}` : "CPU"));
-    state.roster.push({ isAI, label, team: state.gameMode === "teams" ? (i % 2) : -1 });   // times alternados
+    state.roster.push({ isAI, label: isAI ? "" : `P${i + 1}`, team: state.gameMode === "teams" ? (i % 2) : -1 });   // times alternados
   }
-  // CPUs: cor aleatória por partida (spread rotacionado → matizes distintas) que define a personalidade da IA
-  const cpuBase = Math.random() * 360;
-  let cpuSeen = 0;
-  for (const r of state.roster) if (r.isAI) { r.hue = Math.round((cpuBase + cpuSeen * (360 / Math.max(1, cpuCount))) % 360); cpuSeen++; }
+  assignCpuIdentities();   // nome (personagem/filler) + cor → personalidade de cada CPU
   state.scores = new Array(total).fill(0);
   state.teamScores = [0, 0];
+}
+
+// Distância angular entre matizes (na roda de 360°) — pra manter os fillers distintos.
+function hueDistance(a, b) { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); }
+// Matiz aleatória a ≥28° das já usadas (algumas tentativas; senão aceita a última).
+function pickFillerHue(used) {
+  let hue = 0;
+  for (let tries = 0; tries < 24; tries++) { hue = Math.round(Math.random() * 360); if (!used.some((u) => hueDistance(hue, u) < 28)) break; }
+  return hue;
+}
+// Nome + cor de cada CPU. Personagens têm cor assinatura (→ personalidade); fillers têm
+// cor aleatória distinta. ARES é sempre "ARES" (skin própria). Sorteado por partida.
+function assignCpuIdentities() {
+  const bots = state.roster.filter((r) => r.isAI);
+  if (state.ares) { bots.forEach((r) => { r.label = "ARES"; r.white = false; }); return; }
+  const characters = CPU_CHARACTERS.map((c) => ({ name: c.name, hue: c.hue, white: !!c.white }));
+  const fillers = CPU_FILLERS.map((name) => ({ name, hue: null, white: false }));
+  const pool = [...characters, ...fillers].sort(() => Math.random() - 0.5);   // sabor sorteado
+  const usedHues = [];
+  bots.forEach((r, k) => {
+    const pick = pool[k] || { name: `CPU ${k + 1}`, hue: null, white: false };
+    r.label = pick.name;
+    r.white = pick.white;
+    r.hue = pick.hue != null ? pick.hue : pickFillerHue(usedHues);   // filler: matiz distinta
+    usedHues.push(r.hue);
+  });
 }
 
 let prevAlive = [];
@@ -152,7 +174,7 @@ function resetRound() {
     const skin = (state.ares && r.isAI) ? aresSkin()                            // ARES = programa vermelho
       : (state.gameMode === "teams" ? teamSkin(r.team, i)                       // modo times: cor do time
       : (lan.hues && lan.hues[i] != null ? { color: hueColor(lan.hues[i]), glow: hueGlow(lan.hues[i]), hue: lan.hues[i] }  // LAN: cor do lobby (humanos)
-      : (r.isAI && r.hue != null ? { color: hueColor(r.hue), glow: hueGlow(r.hue), hue: r.hue }   // CPU: cor aleatória (define a personalidade)
+      : (r.isAI && r.hue != null ? cpuSkin(r)                                   // CPU: personagem/filler (cor define a personalidade; TRON = branco)
       : skinForIndex(i, total))));                                              // humanos locais: matiz das cores escolhidas
     const p = makePlayer(i + 1, layout[i].col, layout[i].row, layout[i].dir, r.isAI, skin, r.label);
     p.team = r.team ?? -1;

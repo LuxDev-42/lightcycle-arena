@@ -45,3 +45,11 @@ export function skinForIndex(i) {
   return { color: hueColor(hue), glow: hueGlow(hue), hue };
 }
 export function aresSkin() { return { color: hueColor(ARES_HUE), glow: hueGlow(ARES_HUE), hue: ARES_HUE }; }
+
+// Skin de CPU: TRON é branco especial; os demais tiram a cor da matiz (que define a
+// personalidade da IA). `hue` continua presente pra IA mesmo no branco.
+const CPU_WHITE = { color: "hsl(205, 16%, 92%)", glow: "hsla(205, 45%, 96%, 0.9)" };
+export function cpuSkin(r) {
+  if (r.white) return { ...CPU_WHITE, hue: r.hue ?? 205 };
+  return { color: hueColor(r.hue), glow: hueGlow(r.hue), hue: r.hue };
+}

@@ -7,7 +7,7 @@
 import { state } from "../core/state.js";
 import { audio } from "../engines.js";
 import { el } from "./dom.js";
-import { hueColor, skinForIndex, getHumanHue, setHumanHue } from "./colors.js";
+import { hueColor, skinForIndex, cpuSkin, getHumanHue, setHumanHue } from "./colors.js";
 import { TEAM_HUES, teamSkin } from "./teams.js";
 import { setSetting } from "./settings.js";
 import { registerMenu, showOnly, navBtn, navSlider, navStepper, navInput, refreshNav, enableMultiCursor, getMultiCursors } from "./menu-nav.js";
@@ -88,9 +88,9 @@ export function renderLocalRoster() {
   el.lobbyPlayers.innerHTML = "";
   humanColorEls = [];
   state.roster.forEach((r, i) => {
-    // mesma cor da partida: Times = cor do time; CPU = cor aleatória (r.hue); humano = cor escolhida
+    // mesma cor da partida: Times = cor do time; CPU = personagem/filler (branco do TRON); humano = cor escolhida
     const hue = teams ? teamSkin(r.team, i).hue : (r.isAI ? r.hue : skinForIndex(i, total).hue);
-    const c = hueColor(hue);
+    const c = teams ? hueColor(hue) : (r.isAI ? cpuSkin(r).color : hueColor(hue));
     const row = document.createElement("div"); row.className = "lobby-player";
     const dot = document.createElement("span"); dot.className = "pdot"; dot.style.background = c; dot.style.boxShadow = `0 0 8px ${c}`;
     const name = document.createElement("span"); name.className = "pname"; name.textContent = r.label;

@@ -62,6 +62,26 @@ export function setArenaSize(n) { COLS = n; ROWS = n; W = n * CELL; H = n * CELL
 // centrados e proporcionais em qualquer arena. Em n=180 reproduzem os layouts
 // originais exatos. Mesma ordem dos nomes abaixo.
 export const ARENA_NAMES = ["Vazio", "Núcleo", "Pilares", "Cruz"];
+
+// "Personagens" de CPU com cor assinatura → a matiz define a personalidade
+// (personalityForHue): vermelho/laranja = agressivo, amarelo/verde = territorial,
+// ciano/azul = defensivo. TRON é o branco especial (defensor da grade, defensivo).
+export const CPU_CHARACTERS = [
+  { name: "SARK",    hue: 0   },              // vermelho → agressivo
+  { name: "RINZLER", hue: 16  },              // laranja-avermelhado → agressivo
+  { name: "CLU",     hue: 46  },              // laranja-amarelado → territorial
+  { name: "QUORRA",  hue: 190 },              // ciano → defensivo
+  { name: "TRON",    hue: 205, white: true }, // branco especial → defensivo (defensor da grade)
+];
+// Nomes genéricos: cor indiferente (matiz sorteada por partida). Completam quando
+// há mais CPUs que personagens; entram no sorteio junto pra dar variedade.
+// Mistura de programas do Tron + referências de software/games dos anos 80.
+export const CPU_FILLERS = [
+  "RAM", "YORI", "DUMONT", "CROM", "BIT", "MCP", "ABRAXAS", "GEM", "ANON", "BASELINE", "GIBSON",
+  "ROBOTRON", "BERZERK", "ZAXXON", "DEFENDER", "GALAGA", "PARADROID", "XENON", "ELITE", "QIX",
+  "ZORK", "KERMIT", "LOTUS", "WORDSTAR", "DBASE", "SIDEKICK", "TURBO", "NORTON", "DPAINT",
+  "ULTIMA", "MULE", "VISICALC", "HYPERCARD",
+];
 export function buildArenaLayout(mapIndex, n) {
   const c = n / 2, R = Math.round;
   if (mapIndex === 1) {                                  // Núcleo: quadrado central

@@ -8,7 +8,7 @@
 import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, music, renderer } from "../engines.js";
-import { OPPOSITE, WIN_SCORE, SHAKE_DEATH, ARENA_SIZES, COLS, buildArenaLayout, setArenaSize } from "../core/config.js";
+import { OPPOSITE, WIN_SCORE, SHAKE_DEATH, ARENA_SIZES, COLS, CPU_CHARACTERS, CPU_FILLERS, buildArenaLayout, setArenaSize } from "../core/config.js";
 import { hueColor, getHumanHue } from "../ui/colors.js";
 import { settings } from "../ui/settings.js";
 import { el } from "../ui/dom.js";
@@ -174,7 +174,14 @@ function startLanMatch(payload) {
   const cpus = Math.max(0, Math.min(m.cpus ?? 0, 8 - players.length));   // CPUs (IA rodada no host) cabendo no limite
   const roster = [
     ...players.map((p, i) => ({ isAI: false, label: p.name || `P${i + 1}` })),
-    ...Array.from({ length: cpus }, (_, k) => ({ isAI: true, label: cpus > 1 ? `CPU ${k + 1}` : "CPU" })),
+    // CPU por índice (determinístico): personagem com cor assinatura, ou filler com matiz espaçada.
+    // Host e cliente chegam no MESMO resultado sem sincronizar — a IA roda só no host.
+    ...Array.from({ length: cpus }, (_, k) => {
+      const ch = CPU_CHARACTERS[k];
+      if (ch) return { isAI: true, label: ch.name, hue: ch.hue, white: !!ch.white };
+      const name = CPU_FILLERS[k - CPU_CHARACTERS.length] || `CPU ${k + 1}`;
+      return { isAI: true, label: name, hue: (k * 53) % 360 };   // matiz determinística por índice
+    }),
   ];
   // Times no LAN: alternado por ordem de slot — determinístico, host e cliente chegam
   // no MESMO resultado sem precisar de sincronização extra da escolha de times.
