@@ -7,7 +7,7 @@ import {
   CELL, COLS, ROWS, DIRS, OPPOSITE, BASE_TICK, MIN_TICK, MAX_TICK, SPEEDUP, TURN_SPEED_KEEP,
   VICTORY_MS, TRAIL_LINGER_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
   ZONE_GRACE_MS, ZONE_STEP_MS, ZONE_MAX_INSET_FRAC,
-  PICKUP_SPAWN_MS, PICKUP_MAX, PICKUP_BOOST_MS, PICKUP_BLAST_RADIUS, BOOST_SPEED,
+  PICKUP_SPAWN_MS, PICKUP_MAX, PICKUP_BOOST_MS, PICKUP_BLAST_RADIUS, BOOST_SPEED, TELEPORT_CELLS, TELEPORT_CHARGES,
 } from "./config.js";
 import { chooseDirection } from "./ai.js";
 
@@ -61,6 +61,7 @@ export function makePlayer(id, startCol, startRow, dir, isAI, skin, label) {
     effectKind: null,   // power-up temporizado ativo: "boost" | null
     effectMs: 0,        // ms restantes do efeito ativo
     bomb: false,        // carrega uma Bomba (detona ao encostar num rastro, salvando)
+    teleportCharges: 0, // usos de teleporte guardados (power-up)
   };
 }
 
@@ -218,7 +219,7 @@ function closeRing(state, inset) {
 }
 
 // Power-ups: cronômetro de aparição; solta um item numa célula livre longe das cabeças.
-const PICKUP_KINDS = ["boost", "bomb"];
+const PICKUP_KINDS = ["boost", "bomb", "teleport"];
 function updatePickups(state, dt) {
   if (!state.pickupsEnabled || state.phase !== "playing") return;
   state.pickupTimer -= dt;
@@ -245,6 +246,7 @@ function collectPickup(state, player) {
       const kind = arr[i].kind;
       arr.splice(i, 1);
       if (kind === "boost") { player.effectKind = "boost"; player.effectMs = PICKUP_BOOST_MS; }
+      else if (kind === "teleport") player.teleportCharges = TELEPORT_CHARGES;   // 3 usos guardados
       else player.bomb = true;                        // Bomba: guardada; detona ao encostar num rastro
       return;
     }
@@ -270,6 +272,23 @@ function blastAround(state, cx, cy) {
     }
   }
   spawnExplosion(state.particles, (cx + 0.5) * CELL, (cy + 0.5) * CELL, "#ff5c7a");
+}
+// Teleporte (duplo-toque na direção atual): blink de TELEPORT_CELLS células à frente, se o
+// destino estiver livre. Deixa um buraco no rastro (sem trilha no meio) e reposiciona a moto.
+// Retorna true se teleportou. `input.js` chama isto ao detectar o duplo-toque.
+export function teleport(state, player) {
+  if (!player.alive) return false;
+  const d = DIRS[player.dir];
+  const dx = player.x + d.x * TELEPORT_CELLS, dy = player.y + d.y * TELEPORT_CELLS;
+  if (!isFree(state.grid, dx, dy)) return false;   // destino ocupado/fora da arena → não teleporta (evita suicídio acidental)
+  spawnExplosion(state.particles, (player.x + 0.5) * CELL, (player.y + 0.5) * CELL, player.color);   // saída
+  player.trail.push(null);                         // quebra: sem rastro no meio do salto
+  player.x = dx; player.y = dy; player.prevX = dx; player.prevY = dy;
+  state.grid[idx(dx, dy)] = player.id;
+  player.trail.push({ x: dx, y: dy });
+  player.acc = 0;                                   // recomeça o passo a partir do novo ponto
+  spawnExplosion(state.particles, (dx + 0.5) * CELL, (dy + 0.5) * CELL, player.color);              // chegada
+  return true;
 }
 
 // Avança a simulação por `dt` ms — cada moto no seu próprio ritmo.

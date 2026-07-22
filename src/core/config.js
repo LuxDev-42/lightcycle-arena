@@ -47,6 +47,8 @@ export const PICKUP_MAX = 3;          // máximo no chão ao mesmo tempo
 export const PICKUP_BOOST_MS = 2500;  // duração do boost (velocidade)
 export const PICKUP_BLAST_RADIUS = 8; // raio (células) do estouro que quebra rastros ao redor
 export const BOOST_SPEED = 0.6;       // tick no boost = MIN_TICK × isto (menor = mais rápido que o normal)
+export const TELEPORT_CELLS = 8;      // duplo-toque na direção atual → blink de tantas células à frente
+export const TELEPORT_CHARGES = 3;    // usos que o power-up de teleporte concede
 
 // ---- Modo ARES (easter egg) ----
 export const ARES_CHANCE = 0.05; // chance de ARES no singleplayer (multiplayer = /10)

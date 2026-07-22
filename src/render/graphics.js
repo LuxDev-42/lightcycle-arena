@@ -194,7 +194,7 @@ export class Renderer {
   // Power-ups: itens no chão (losango na cor do tipo) + aura na moto com efeito ativo.
   drawPickups(state) {
     const ctx = this.ctx;
-    const colorOf = (kind) => (kind === "boost" ? "#ffd23f" : "#ff5c7a");   // boost dourado · estouro rosa
+    const colorOf = (kind) => (kind === "boost" ? "#ffd23f" : kind === "teleport" ? "#7c5cff" : "#ff5c7a");   // boost dourado · teleporte violeta · bomba rosa
     ctx.save();
     for (const pk of (state.pickups || [])) {
       const cx = (pk.x + 0.5) * CELL, cy = (pk.y + 0.5) * CELL, s = CELL * 1.5, c = colorOf(pk.kind);
@@ -205,7 +205,9 @@ export class Renderer {
     }
     if (state.players) for (const p of state.players) {   // indicadores na cabeça: boost (aura) e bomba guardada (anel)
       if (!p.alive) continue;
-      const cx = (p.x + 0.5) * CELL, cy = (p.y + 0.5) * CELL;
+      // posição INTERPOLADA da cabeça (igual ao rastro) — senão a aura "pula" a cada passo
+      const cx = (p.prevX + (p.x - p.prevX) * p.progress + 0.5) * CELL;
+      const cy = (p.prevY + (p.y - p.prevY) * p.progress + 0.5) * CELL;
       ctx.lineWidth = 2 / this.camZoom;
       if (p.effectKind === "boost") {
         ctx.strokeStyle = "#ffd23f"; ctx.globalAlpha = 0.75;
@@ -214,6 +216,14 @@ export class Renderer {
       if (p.bomb) {                                       // carrega Bomba: anel rosa (maior)
         ctx.strokeStyle = "#ff5c7a"; ctx.globalAlpha = 0.85;
         ctx.beginPath(); ctx.arc(cx, cy, CELL * 2.0, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (p.teleportCharges > 0) {                        // cargas de teleporte: anel dividido em 3 arcos (some 1 por uso)
+        ctx.strokeStyle = "#7c5cff"; ctx.globalAlpha = 0.9; ctx.lineWidth = 2.5 / this.camZoom;
+        const seg = (Math.PI * 2) / 3, gap = 0.3;         // 3 terços com um vão entre eles
+        for (let i = 0; i < p.teleportCharges && i < 3; i++) {
+          ctx.beginPath(); ctx.arc(cx, cy, CELL * 2.3, i * seg + gap / 2, (i + 1) * seg - gap / 2); ctx.stroke();
+        }
+        ctx.lineWidth = 2 / this.camZoom;
       }
       ctx.globalAlpha = 1;
     }

@@ -5,6 +5,7 @@ import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, renderer, music } from "../engines.js";
 import { DIRS, OPPOSITE } from "../core/config.js";
+import { teleport } from "../core/logic.js";
 import { navMove, navHorizontal, activateNav, isNavActive, refreshNav,
   isMultiCursor, navMovePlayer, navHorizontalPlayer, activatePlayer } from "../ui/menu-nav.js";
 
@@ -49,13 +50,29 @@ const canSteer = () => isPlayable() || state.phase === "countdown";   // dá pra
 let lanSteer = null;
 export function setLanSteer(fn) { lanSteer = fn; }
 
+// Teleporte: power-up guardado (cargas). Duplo-toque na direção atual gasta 1 carga.
+// Sem cooldown (spammável) — a própria carga limita; LAN não entra (steer roteia antes).
+const TELEPORT_DBLTAP_MS = 280;      // janela entre os dois toques
+const tapAt = {};                    // playerId -> instante do último toque na direção atual
+function tryTeleport(playerId, player) {
+  if (state.phase !== "playing" || !player.teleportCharges) return;   // precisa de carga (vem do power-up)
+  const now = performance.now();
+  if (tapAt[playerId] && now - tapAt[playerId] <= TELEPORT_DBLTAP_MS) {   // duplo-toque
+    tapAt[playerId] = 0;
+    if (teleport(state, player)) { player.teleportCharges--; audio.uiMove(); }   // gasta só se teleportou
+  } else {
+    tapAt[playerId] = now;
+  }
+}
+
 // Aplica uma direção ABSOLUTA a um jogador humano (teclado e toque).
 function steer(playerId, dir) {
   if (!canSteer() || app.paused) return;
   if (lanSteer) { lanSteer(dir); return; }                   // partida LAN: roteia (host/rede)
   const player = state.players[playerId - 1];
   if (!player || !player.alive || player.isAI) return;
-  if (dir !== OPPOSITE[player.dir]) player.nextDir = dir;     // sem ré
+  if (dir === player.dir) { tryTeleport(playerId, player); return; }   // apertou a direção atual → duplo-toque = teleporte
+  if (dir !== OPPOSITE[player.dir]) player.nextDir = dir;     // sem ré (curva normal)
 }
 // Curva RELATIVA ao rumo atual (botões de toque): esquerda/direita = 90°.
 function steerTurn(playerId, side) {
@@ -145,6 +162,7 @@ function onKeyDown(event) {
   const binding = KEYMAP[key];
   if (!binding || !canSteer() || app.paused) return;
   event.preventDefault();
+  if (event.repeat) return;                                   // ignora auto-repeat (senão vira "duplo-toque" falso de teleporte)
   let [playerId, dir] = binding;
   if (state.mode === "cpu" && playerId === 2) playerId = 1;   // setas também guiam o P1 no singleplayer
   steer(playerId, dir);
