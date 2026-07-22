@@ -8,7 +8,7 @@
 import { state } from "../core/state.js";
 import { app } from "../core/app.js";
 import { audio, music, renderer } from "../engines.js";
-import { OPPOSITE, WIN_SCORE, SHAKE_DEATH, ARENA_SIZES, COLS, CPU_CHARACTERS, CPU_FILLERS, buildArenaLayout, setArenaSize } from "../core/config.js";
+import { OPPOSITE, WIN_SCORE, SHAKE_DEATH, ARENA_SIZES, COLS, CPU_CHARACTERS, CPU_FILLERS, SPEED_SCALES, setSpeedScale, buildArenaLayout, setArenaSize } from "../core/config.js";
 import { hueColor, getHumanHue } from "../ui/colors.js";
 import { settings } from "../ui/settings.js";
 import { el } from "../ui/dom.js";
@@ -26,6 +26,7 @@ export const setProfileName = (n) => { try { localStorage.setItem(PROFILE_KEY, n
 export const currentMatchConfig = () => ({
   map: settings.map ?? 0, size: settings.arenaSize ?? 1,
   difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0, gameMode: settings.gameMode ?? 0,
+  winScore: settings.winScore ?? WIN_SCORE, speed: settings.speed ?? 1,
 });
 
 // Estado mutável da sessão. O main lê/escreve por PROPRIEDADE (lan.role, lan.state.*).
@@ -188,6 +189,8 @@ function startLanMatch(payload) {
   roster.forEach((r, i) => { r.team = state.gameMode === "teams" ? (i % 2) : -1; });
   state.roster = roster;
   state.difficulty = m.difficulty ?? settings.difficulty;
+  state.winScore = m.winScore ?? WIN_SCORE;               // melhor-de-N do host
+  setSpeedScale(SPEED_SCALES[m.speed ?? 1]);              // velocidade do host (mesma dos dois lados)
   state.scores = new Array(state.roster.length).fill(0);
   state.teamScores = [0, 0];
   setArenaSize(ARENA_SIZES[m.size ?? 1]); state.arenaLayout = buildArenaLayout(m.map ?? 0, COLS);
@@ -249,11 +252,12 @@ function lanApplySnapshot(snap) {
   }
   renderScoreboard();
   if (snap.ph === "result" && prevPhase !== "result") {
+    const winScore = state.winScore || WIN_SCORE;
     if (state.gameMode === "teams") {
-      const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
+      const winTeam = state.teamScores.findIndex((s) => s >= winScore);
       deps.showVictoryTeam(winTeam >= 0 ? winTeam : 0);
     } else {
-      const champ = state.players.find((p) => state.scores[p.id - 1] >= WIN_SCORE) || state.players[0];
+      const champ = state.players.find((p) => state.scores[p.id - 1] >= winScore) || state.players[0];
       deps.showVictory(champ);
     }
   }

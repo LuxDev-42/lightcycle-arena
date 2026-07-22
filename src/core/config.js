@@ -10,9 +10,21 @@ export let ROWS = 180;
 export let W = COLS * CELL;    // largura do mundo (px) — derivada
 export let H = ROWS * CELL;    // altura do mundo (px) — derivada
 
-export const BASE_TICK = 70;    // ms por passo (menor = mais rápido)
-export const MIN_TICK = 42;           // intervalo mínimo = velocidade máxima
-export const MAX_TICK = 150;          // intervalo máximo = velocidade mínima (piso ao virar muito)
+// Ticks de velocidade: mutáveis via setSpeedScale (opção "Velocidade" da partida).
+// São `let` de propósito — o reassign propaga pros imports (live bindings), igual COLS.
+const TICK_NORMAL = Object.freeze({ base: 70, min: 42, max: 150 });   // referência = velocidade "Normal"
+export let BASE_TICK = TICK_NORMAL.base;    // ms por passo (menor = mais rápido)
+export let MIN_TICK = TICK_NORMAL.min;      // intervalo mínimo = velocidade máxima
+export let MAX_TICK = TICK_NORMAL.max;      // intervalo máximo = velocidade mínima (piso ao virar muito)
+// scale > 1 = mais rápido (ticks proporcionalmente menores). Escala os três juntos
+// pra preservar a dinâmica de aceleração/curva em qualquer velocidade.
+export function setSpeedScale(scale) {
+  BASE_TICK = Math.round(TICK_NORMAL.base / scale);
+  MIN_TICK = Math.round(TICK_NORMAL.min / scale);
+  MAX_TICK = Math.round(TICK_NORMAL.max / scale);
+}
+export const SPEED_NAMES = ["Lenta", "Normal", "Rápida", "Turbo"];   // índice → rótulo
+export const SPEED_SCALES = [0.82, 1.0, 1.22, 1.5];                  // índice → fator (Normal = 1.0)
 export const SPEEDUP = 0.980;         // fator de aceleração por passo (mais perto de 1 = recupera devagar)
 export const TURN_SPEED_KEEP = 0.85;   // ao virar: mantém esta fração da velocidade atual (curvas seguidas acumulam)
 export const VICTORY_MS = 3000;// tempo até congelar e mostrar o painel / ir pra próxima rodada

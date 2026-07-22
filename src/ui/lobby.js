@@ -33,7 +33,7 @@ function enableMultiForLobby(prev) {
 // Refaz roster + nav quando muda nº de jogadores / modo — sem perder a posição do cursor de cada um.
 function relayoutLocalLobby() {
   const prev = getMultiCursors();
-  renderLocalRoster();
+  renderLocalRoster(true);                            // mantém os CPUs já sorteados (só muda quem entra/sai)
   registerLobbyNav();
   refreshNav();                                       // re-filtra os itens (sliders entram/saem)
   if (state.mode === "2p") enableMultiForLobby(prev);
@@ -56,6 +56,7 @@ export function openLobby() {   // LAN
 export function openLocalLobby(mode) {   // singleplayer / multiplayer local
   lobbyKind = "local";
   lan.role = null; lan.hues = null; setLanSteer(null);   // garante que o modo LAN está desligado
+  state.ares = false;                                    // lobby sempre mostra partida normal (ARES é surpresa no início)
   state.mode = mode;
   setLobbyJoin(null);
   setGamepadCountHandler(mode === "2p" ? relayoutLocalLobby : null);   // (des)conectar controle recompõe os jogadores
@@ -81,8 +82,8 @@ function setLobbyKindUI() {
 }
 
 // Preview do roster local (quem vai jogar) — mesmas cores da partida (skinForIndex).
-export function renderLocalRoster() {
-  deps.configureRoster(state.mode);   // monta state.roster + state.gameMode (a partida remonta depois)
+export function renderLocalRoster(keepIdentities = false) {
+  deps.configureRoster(state.mode, keepIdentities);   // monta state.roster + state.gameMode (a partida reaproveita as identidades)
   const teams = state.gameMode === "teams";
   const total = state.roster.length;
   el.lobbyPlayers.innerHTML = "";
@@ -164,11 +165,10 @@ function toggleReady() {
   if (lanAvailable()) window.lan.setReady(!(me && me.ready));
 }
 function registerLobbyNav() {
-  const nav = [];
+  const nav = [navBtn("btn-lobby-ready")];   // 1º item = foco inicial (Começar/Pronto)
   if (lobbyKind === "local" || lan.state.isHost) nav.push(navStepper(el.modeSeg, () => onModeChange(0), () => onModeChange(1)));   // ←/→ alterna o modo
   if (lobbyKind === "local") humanColorEls.forEach((sl, i) => { if (sl) nav.push(navSlider(sl, 8, i + 1)); });   // slider de cor de cada humano (dono = pid; outro → erro)
   if (lobbyKind === "lan") { nav.push(navInput(el.lobbyName)); nav.push(navSlider(el.lobbyHue, 8)); }   // nome navegável por teclado (Enter edita)
-  nav.push(navBtn("btn-lobby-ready"));
   if (lobbyKind === "local" || lan.state.isHost) nav.push(navBtn("btn-lobby-options"));
   nav.push(navBtn("btn-lobby-leave"));
   registerMenu(el.lobby, nav);

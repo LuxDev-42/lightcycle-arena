@@ -9,6 +9,7 @@ import {
   SHAKE_DEATH, NEARMISS_COOLDOWN_MS, STEPTICK_MIN_MS, TRAIL_WINDUP_MS,
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
   CPU_CHARACTERS, CPU_FILLERS,
+  SPEED_NAMES, SPEED_SCALES, setSpeedScale,
 } from "./core/config.js";
 import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./core/logic.js";
 import { el } from "./ui/dom.js";
@@ -90,6 +91,14 @@ function defineSettings() {
       for (const btn of stepper.querySelectorAll(".step-btn")) btn.style.color = color;
     }
   } });
+  defineSetting("winScore", { ls: "lc.winScore", def: WIN_SCORE, min: 1, max: 10, apply: (v) => {
+    state.winScore = v;                    // primeiro a `v` vitórias leva a partida
+    el.winVal.textContent = v;
+  } });
+  defineSetting("speed", { ls: "lc.speed", def: 1, min: 0, max: SPEED_NAMES.length - 1, apply: (v) => {
+    setSpeedScale(SPEED_SCALES[v]);        // escala os ticks (vale na próxima moto criada)
+    el.speedVal.textContent = SPEED_NAMES[v];
+  } });
   defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_NAMES.length - 1, apply: (v) => {
     el.mapVal.textContent = ARENA_NAMES[v];                // nome do mapa
     el.mapAux.textContent = "";
@@ -116,20 +125,31 @@ function defineSettings() {
 // ---- Roster / round ----
 // Monta o roster a partir do modo + nº de CPUs (ARES força 1 CPU).
 
-function configureRoster(mode) {
+function configureRoster(mode, keepIdentities = false) {
   state.mode = mode;
   state.difficulty = settings.difficulty;
+  state.winScore = settings.winScore;
+  setSpeedScale(SPEED_SCALES[settings.speed ?? 1]);   // garante a velocidade local (uma partida LAN pode ter mudado)
   state.gameMode = (!state.ares && settings.gameMode === 1) ? "teams" : "ffa";   // ARES é sempre FFA
   const humans = mode === "2p" ? Math.min(4, 2 + connectedGamepadCount()) : 1;   // 2 (teclado) + 1 por gamepad conectado
   state.humans = humans;
   const cpus = state.ares ? 1 : (mode === "2p" ? settings.mpCpus : settings.spCpus);
   const total = humans + cpus;
+  // Identidades de CPU são sorteadas ao ENTRAR no lobby; a partida reaproveita (mesmo formato,
+  // sem ARES) pra o nome/cor do jogo baterem com o preview. ARES/mudança de formato → sorteia de novo.
+  const prevCpu = (state.roster || []).filter((r) => r.isAI).map((r) => ({ label: r.label, hue: r.hue, white: r.white }));
+  const reuseCpu = keepIdentities && !state.ares && prevCpu.length === cpus && !prevCpu.some((c) => c.label === "ARES");
   state.roster = [];
   for (let i = 0; i < total; i++) {
     const isAI = i >= humans;
     state.roster.push({ isAI, label: isAI ? "" : `P${i + 1}`, team: state.gameMode === "teams" ? (i % 2) : -1 });   // times alternados
   }
-  assignCpuIdentities();   // nome (personagem/filler) + cor → personalidade de cada CPU
+  if (reuseCpu) {                          // mantém nome/cor escolhidos no lobby
+    let k = 0;
+    for (const r of state.roster) if (r.isAI) { const s = prevCpu[k++]; r.label = s.label; r.hue = s.hue; r.white = s.white; }
+  } else {
+    assignCpuIdentities();                 // sorteia nome (personagem/filler) + cor → personalidade de cada CPU
+  }
   state.scores = new Array(total).fill(0);
   state.teamScores = [0, 0];
 }
@@ -314,7 +334,7 @@ async function startMatch(mode) {
   const chance = mode === "2p" ? ARES_CHANCE / 10 : ARES_CHANCE;
   state.ares = Math.random() < chance;     // sorteia o modo ARES
   aresEscAllowed = false;                  // re-arma o trava-ESC do ARES (libera só após a 1ª morte)
-  configureRoster(mode);                   // ARES força 1 CPU
+  configureRoster(mode, true);             // ARES força 1 CPU; senão mantém os CPUs escolhidos no lobby
   applyArenaConfig();                      // tamanho + mapa escolhidos em Opções > Mapas
   showOnly(null);
   if (state.gameMode === "teams" && !state.ares) { openTeamSelect(); return; }   // modo Times: escolhe os lados antes de começar
@@ -420,6 +440,7 @@ function closeOptions() {
   showOnly(el.menu);
 }function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
+function openMatch()       { showOnly(el.matchMenu); }
 function openMaps()        { showOnly(el.mapsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openGraphics()    { showOnly(el.graphicsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openSounds()      { showOnly(el.soundsMenu); }
@@ -460,15 +481,16 @@ function backToMultiplayer() { showOnly(el.multiplayerMenu); }
 function backToLan()         { showOnly(el.lanMenu); }
 function openLanFind()       { showOnly(el.lanFind); startFindSessions(); }
 
-// Fim de round: alguém chegou a 5 → fim de partida; senão, próximo round.
+// Fim de round: alguém chegou às vitórias necessárias → fim de partida; senão, próximo round.
 function endRound() {
+  const winScore = state.winScore || WIN_SCORE;
   if (state.gameMode === "teams") {
-    const winTeam = state.teamScores.findIndex((s) => s >= WIN_SCORE);
+    const winTeam = state.teamScores.findIndex((s) => s >= winScore);
     if (winTeam >= 0) showVictoryTeam(winTeam);
     else nextRound();
     return;
   }
-  const champ = state.players.find(p => state.scores[p.id - 1] >= WIN_SCORE);
+  const champ = state.players.find(p => state.scores[p.id - 1] >= winScore);
   if (champ) {
     if (state.ares) aresEnd();
     else showVictory(champ);
@@ -535,6 +557,7 @@ function aresEnd() {
 // Esc / botão de sair: depende da fase (no menu volta um nível; no ARES trava até a 1ª morte).
 const isOpenSub = () => !el.audioMenu.classList.contains("hidden")
   || !el.advMenu.classList.contains("hidden")
+  || !el.matchMenu.classList.contains("hidden")
   || !el.mapsMenu.classList.contains("hidden")
   || !el.graphicsMenu.classList.contains("hidden")
   || !el.soundsMenu.classList.contains("hidden")
@@ -581,7 +604,12 @@ function buildNav() {
   registerMenu(el.lanMenu, [navBtn("btn-lan-create"), navBtn("btn-lan-find"), navBtn("btn-lan-back")]);
   registerMenu(el.lanFind, [navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")]);
   registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
-  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
+  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-match"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
+  registerMenu(el.matchMenu, [
+    navStepper(el.winVal.closest(".stepper"), () => stepSetting("winScore", -1), () => stepSetting("winScore", 1)),
+    navStepper(el.speedVal.closest(".stepper"), () => stepSetting("speed", -1), () => stepSetting("speed", 1)),
+    navBtn("btn-match-back"),
+  ]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
   registerMenu(el.advMenu, [
     navStepper(el.spVal.closest(".stepper"), () => stepSetting("spCpus", -1), () => stepSetting("spCpus", 1)),
@@ -653,6 +681,12 @@ function wireControls() {
   document.addEventListener("webkitfullscreenchange", syncFullscreenLabel);
   syncFullscreenLabel();
   document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
+  document.getElementById("btn-match").addEventListener("click", openMatch);
+  document.getElementById("btn-match-back").addEventListener("click", backToOptions);
+  document.getElementById("win-dec").addEventListener("click", () => stepSetting("winScore", -1));
+  document.getElementById("win-inc").addEventListener("click", () => stepSetting("winScore", 1));
+  document.getElementById("speed-dec").addEventListener("click", () => stepSetting("speed", -1));
+  document.getElementById("speed-inc").addEventListener("click", () => stepSetting("speed", 1));
   document.getElementById("btn-audio").addEventListener("click", openAudio);
   document.getElementById("btn-audio-back").addEventListener("click", backToOptions);
   document.getElementById("btn-again").addEventListener("click", again);
