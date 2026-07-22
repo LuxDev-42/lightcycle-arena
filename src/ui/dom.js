@@ -76,6 +76,7 @@ export const el = {
   diffAux: $("diff-aux"),
   winVal: $("win-val"),
   speedVal: $("speed-val"),
+  btnZone: $("btn-zone"),
   mapVal: $("map-val"),
   mapAux: $("map-aux"),
   sizeVal: $("size-val"),

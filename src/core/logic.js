@@ -6,6 +6,7 @@
 import {
   CELL, COLS, ROWS, DIRS, OPPOSITE, BASE_TICK, MIN_TICK, MAX_TICK, SPEEDUP, TURN_SPEED_KEEP,
   VICTORY_MS, TRAIL_LINGER_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
+  ZONE_GRACE_MS, ZONE_STEP_MS, ZONE_MAX_INSET_FRAC,
 } from "./config.js";
 import { chooseDirection } from "./ai.js";
 
@@ -170,9 +171,37 @@ function stepPlayer(state, player) {
   player.tickMs = Math.max(minTick, player.tickMs * speedup);   // acelera de novo
 }
 
+// Uma célula está na região JÁ FECHADA da zona (nos `inset` anéis externos)?
+export function inClosedZone(x, y, inset) {
+  return x < inset || x >= COLS - inset || y < inset || y >= ROWS - inset;
+}
+// Zona que encolhe: avança a borda em função do tempo de round e mata quem for pego.
+function updateZone(state, dt) {
+  if (!state.zoneEnabled || state.phase !== "playing") return;
+  state.roundTime += dt;
+  const maxInset = Math.floor(Math.min(COLS, ROWS) * ZONE_MAX_INSET_FRAC);
+  const target = Math.min(maxInset, Math.floor((state.roundTime - ZONE_GRACE_MS) / ZONE_STEP_MS));
+  while (state.zoneInset < target) { closeRing(state, state.zoneInset); state.zoneInset++; }
+}
+// Marca o anel `inset` como WALL e mata quem estiver vivo em cima dele.
+function closeRing(state, inset) {
+  const grid = state.grid, loC = inset, hiC = COLS - 1 - inset, loR = inset, hiR = ROWS - 1 - inset;
+  if (loC > hiC || loR > hiR) return;
+  for (let c = loC; c <= hiC; c++) { grid[idx(c, loR)] = WALL; grid[idx(c, hiR)] = WALL; }
+  for (let r = loR; r <= hiR; r++) { grid[idx(loC, r)] = WALL; grid[idx(hiC, r)] = WALL; }
+  for (const p of state.players) {
+    if (p.alive && (p.x === loC || p.x === hiC || p.y === loR || p.y === hiR)) {
+      p.alive = false;
+      spawnExplosion(state.particles, (p.x + 0.5) * CELL, (p.y + 0.5) * CELL, p.color);
+      p.fadeTimer = TRAIL_LINGER_MS;   // mesmo de-rez de uma colisão normal
+    }
+  }
+}
+
 // Avança a simulação por `dt` ms — cada moto no seu próprio ritmo.
 // Retorna true se o round terminou neste avanço.
 export function advance(state, dt) {
+  updateZone(state, dt);                    // zona fecha antes das motos moverem (colisões deste frame já veem a parede)
   for (const player of state.players) {
     if (!player.alive) continue;
     player.acc += dt;
@@ -191,7 +220,7 @@ export function advance(state, dt) {
     player.fadeTimer -= dt;
     if (player.fadeTimer <= 0) {
       spawnTrailBurst(state.particles, player);
-      for (const c of player.trail) state.grid[idx(c.x, c.y)] = 0;
+      for (const c of player.trail) if (!inClosedZone(c.x, c.y, state.zoneInset)) state.grid[idx(c.x, c.y)] = 0;   // não reabre a parede da zona
       player.trailGone = true;
     }
   }

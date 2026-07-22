@@ -100,6 +100,10 @@ function defineSettings() {
     setSpeedScale(SPEED_SCALES[v]);        // escala os ticks (vale na próxima moto criada)
     el.speedVal.textContent = SPEED_NAMES[v];
   } });
+  defineSetting("zone", { ls: "lc.zone", def: 0, min: 0, max: 1, apply: (v) => {   // zona que encolhe (anti-empate) — padrão desligado
+    el.btnZone.classList.toggle("on", !!v);                        // bolinha p/ a direita quando ligado
+    el.btnZone.setAttribute("aria-checked", v ? "true" : "false");
+  } });
   defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_NAMES.length - 1, apply: (v) => {
     el.mapVal.textContent = ARENA_NAMES[v];                // nome do mapa
     el.mapAux.textContent = "";
@@ -189,6 +193,8 @@ function resetRound() {
   state.grid = createGrid();
   applyArena(state.grid, state.arenaLayout);              // marca os obstáculos do layout da partida
   state.particles = [];
+  state.roundTime = 0; state.zoneInset = 0;               // zona recomeça a cada round
+  state.zoneEnabled = !!settings.zone && !lan.role;       // por ora só no jogo local (LAN não sincroniza a zona)
   const total = state.roster.length;
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
@@ -639,6 +645,7 @@ function buildNav() {
   registerMenu(el.matchMenu, [
     navStepper(el.winVal.closest(".stepper"), () => stepSetting("winScore", -1), () => stepSetting("winScore", 1)),
     navStepper(el.speedVal.closest(".stepper"), () => stepSetting("speed", -1), () => stepSetting("speed", 1)),
+    navBtn("btn-zone"),
     navBtn("btn-match-back"),
   ]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
@@ -721,6 +728,7 @@ function wireControls() {
   document.getElementById("win-inc").addEventListener("click", () => stepSetting("winScore", 1));
   document.getElementById("speed-dec").addEventListener("click", () => stepSetting("speed", -1));
   document.getElementById("speed-inc").addEventListener("click", () => stepSetting("speed", 1));
+  el.btnZone.addEventListener("click", () => { setSetting("zone", settings.zone ? 0 : 1); audio.uiMove(); });
   document.getElementById("btn-audio").addEventListener("click", openAudio);
   document.getElementById("btn-audio-back").addEventListener("click", backToOptions);
   document.getElementById("btn-again").addEventListener("click", again);

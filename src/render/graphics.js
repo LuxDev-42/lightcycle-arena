@@ -1,6 +1,6 @@
 // Tudo gráfico: canvas, câmera e desenho da cena (arena, rastro, farol,
 // partículas). Lê o `state` mas não o modifica (a câmera é estado próprio).
-import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_LINGER_MS, clamp } from "../core/config.js";
+import { CELL, COLS, ROWS, W, H, DIRS, MAX_ZOOM, CAM_PAN_SMOOTH, CAM_PAN_REF, CAM_ZOOM_SMOOTH, CAM_ZOOM_REF, CAM_SMOOTH_MIN, CAM_PADDING_CELLS, SHAKE_DECAY_MS, FLASH_DECAY_MS, TRAIL_LINGER_MS, ZONE_GRACE_MS, ZONE_MAX_INSET_FRAC, clamp } from "../core/config.js";
 import { drawDebug } from "./debug-overlay.js";
 
 // Suavização criticamente amortecida (SmoothDamp, à la Unity): persegue `target`
@@ -188,6 +188,30 @@ export class Renderer {
     ctx.lineWidth = 3 / this.camZoom;
     ctx.strokeStyle = ares ? "rgba(255,40,40,0.6)" : "rgba(25,224,255,0.55)";
     ctx.strokeRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Zona que encolhe: região fechada (letal) preenchida + borda viva + faixa de aviso
+  // no anel que fecha a seguir. Só desenha perto de começar a fechar (evita poluir a arena cheia).
+  drawZone(state) {
+    if (!state.zoneEnabled || state.roundTime < ZONE_GRACE_MS - 1800) return;
+    const ctx = this.ctx, t = state.zoneInset * CELL;   // espessura já fechada, por lado (px)
+    ctx.save();
+    if (t > 0) {                                         // região fechada (WALL) — hazard + limite atual
+      ctx.fillStyle = "rgba(255,40,40,0.16)";
+      ctx.fillRect(0, 0, W, t); ctx.fillRect(0, H - t, W, t);
+      ctx.fillRect(0, t, t, H - 2 * t); ctx.fillRect(W - t, t, t, H - 2 * t);
+      ctx.lineWidth = 3 / this.camZoom;
+      ctx.strokeStyle = "rgba(255,80,80,0.7)";
+      ctx.strokeRect(t, t, W - 2 * t, H - 2 * t);
+    }
+    const maxInset = Math.floor(Math.min(COLS, ROWS) * ZONE_MAX_INSET_FRAC);
+    if (state.zoneInset < maxInset) {                    // faixa de AVISO: anel que fecha a seguir
+      const w = CELL;
+      ctx.fillStyle = "rgba(255,176,32,0.22)";
+      ctx.fillRect(t, t, W - 2 * t, w); ctx.fillRect(t, H - t - w, W - 2 * t, w);
+      ctx.fillRect(t, t, w, H - 2 * t); ctx.fillRect(W - t - w, t, w, H - 2 * t);
+    }
     ctx.restore();
   }
 
@@ -413,6 +437,7 @@ export class Renderer {
 
     this.drawArena(state.ares);
     this.drawObstacles(state);
+    this.drawZone(state);
     if (state.players) for (const player of state.players) if (player.alive || !player.trailGone) this.drawTrail(player);   // trilha persiste ~2s após a morte, depois some
     this.drawParticles(state.particles);
     if (this.debug) drawDebug(this, state);

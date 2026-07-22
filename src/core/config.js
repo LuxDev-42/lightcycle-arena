@@ -35,6 +35,12 @@ export const MAX_ZOOM = 2.1;   // limite de aproximação quando estão pertinho
 export const WIN_SCORE = 3;      // default/fallback de vitórias (configurável em Opções > Partida, 1–10)
 export const COUNTDOWN_MS = 3000;// contagem 3-2-1 antes de cada round começar
 
+// Zona que encolhe (anti-empate): após a carência, a borda avança marcando WALL, anel
+// por anel, forçando o encontro. O anel de fronteira acende como aviso antes de fechar.
+export const ZONE_GRACE_MS = 10000;   // carência antes de começar a fechar
+export const ZONE_STEP_MS = 700;      // tempo por anel (1 célula) fechado
+export const ZONE_MAX_INSET_FRAC = 0.42;   // fecha até esta fração de cada lado (deixa um miolo, não zera)
+
 // ---- Modo ARES (easter egg) ----
 export const ARES_CHANCE = 0.05; // chance de ARES no singleplayer (multiplayer = /10)
 export const ARES_HOLD_MS = 3000;// tempo do título ARES parado na tela

@@ -20,4 +20,7 @@ export const state = {
   countdownTimer: 0,        // contagem 3-2-1
   countShown: -1,
   nameplateTimer: 0,        // ms restantes dos balões "quem é quem" no início do round
+  zoneEnabled: false,       // zona que encolhe ligada nesta partida (só local por ora)
+  roundTime: 0,             // ms decorridos no "playing" deste round (dispara a zona)
+  zoneInset: 0,             // nº de anéis já fechados a partir da borda (0 = arena cheia)
 };
