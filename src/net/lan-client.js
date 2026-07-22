@@ -16,6 +16,7 @@ import { showOnly, registerMenu, navBtn, refreshNav } from "../ui/menu-nav.js";
 import { renderScoreboard } from "../ui/scoreboard.js";
 import { setLanSteer } from "../input/input.js";
 import { serializePlayers, applyPlayers } from "./lan-sync.js";
+import { blastAround, teleport } from "../core/logic.js";
 
 export const lanAvailable = () => !!window.lan;
 const hueOf = (color) => { const m = /hsl\((\d+)/.exec(color || ""); return m ? +m[1] : 190; };
@@ -27,6 +28,7 @@ export const currentMatchConfig = () => ({
   map: settings.map ?? 0, size: settings.arenaSize ?? 1,
   difficulty: settings.difficulty ?? 2, cpus: settings.mpCpus ?? 0, gameMode: settings.gameMode ?? 0,
   winScore: settings.winScore ?? WIN_SCORE, speed: settings.speed ?? 1,
+  zone: settings.zone ?? 0, powerups: settings.powerups ?? 0,
 });
 
 // Estado mutável da sessão. O main lê/escreve por PROPRIEDADE (lan.role, lan.state.*).
@@ -41,6 +43,8 @@ export const lan = {
   prevAlive: [],
   pausedBy: null,      // { id, name } de quem pausou, ou null
   listSig: "",         // assinatura da lista de sessões (evita reconstruir à toa)
+  matchZone: false,    // zona ligada nesta partida (do host, p/ o cliente renderizar)
+  matchPowerups: false,// power-ups ligados nesta partida (do host)
 };
 
 // Callbacks de fluxo/menu injetados pelo main (quebram o import circular).
@@ -191,6 +195,7 @@ function startLanMatch(payload) {
   state.difficulty = m.difficulty ?? settings.difficulty;
   state.winScore = m.winScore ?? WIN_SCORE;               // melhor-de-N do host
   setSpeedScale(SPEED_SCALES[m.speed ?? 1]);              // velocidade do host (mesma dos dois lados)
+  lan.matchZone = !!m.zone; lan.matchPowerups = !!m.powerups;   // regras extras do host (resetRound usa no cliente)
   state.scores = new Array(state.roster.length).fill(0);
   state.teamScores = [0, 0];
   setArenaSize(ARENA_SIZES[m.size ?? 1]); state.arenaLayout = buildArenaLayout(m.map ?? 0, COLS);
@@ -211,21 +216,38 @@ export function lanAfterReset() {
   lan.prevAlive = state.players.map((p) => p.alive);
   state.players.forEach((p, i) => { lan.syncLens[i] = p.trail.length; });
 }
+let lanTapAt = 0;                  // duplo-toque do jogador local (teleporte no LAN)
 function lanLocalSteer(dir) {     // input local → host aplica no próprio slot; cliente envia pro host
   const p = state.players && state.players[lan.state.mySlot];
-  if (!p || dir === OPPOSITE[p.dir]) return;
+  if (!p) return;
+  if (dir === p.dir) {            // apertou a direção atual → duplo-toque = teleporte (power-up)
+    if (state.phase === "playing" && p.teleportCharges > 0) {
+      const now = performance.now();
+      if (lanTapAt && now - lanTapAt <= 280) {
+        lanTapAt = 0;
+        if (lan.role === "host") { if (teleport(state, p)) p.teleportCharges--; }   // host: executa e desconta
+        else if (lanAvailable()) window.lan.sendInput("teleport");                  // cliente: pede pro host (autoritativo)
+      } else lanTapAt = now;
+    }
+    return;
+  }
+  if (dir === OPPOSITE[p.dir]) return;
   if (lan.role === "host") p.nextDir = dir;
   else if (lanAvailable()) window.lan.sendInput(dir);
 }
 function lanHostInput(data) {     // host: aplica o input recebido de um cliente no slot dele
   const p = state.players && state.players[lan.slotById[data.id]];
-  if (p && p.alive && data.dir !== OPPOSITE[p.dir]) p.nextDir = data.dir;
+  if (!p || !p.alive) return;
+  if (data.dir === "teleport") { if (p.teleportCharges > 0 && teleport(state, p)) p.teleportCharges--; return; }   // teleporte do cliente
+  if (data.dir !== OPPOSITE[p.dir]) p.nextDir = data.dir;
 }
 export function lanSendSnapshot() {
   if (!lanAvailable() || !state.players) return;
   window.lan.sendState({
     ph: state.phase, rw: state.roundWinner, ct: state.countdownTimer, dy: state.dyingTimer,
     round: lan.roundHost, sc: state.scores.slice(), ts: state.teamScores.slice(),
+    zi: state.zoneInset, rt: state.roundTime,             // zona: cliente renderiza a partir daqui
+    pk: state.pickups, bl: state.blasts.length ? state.blasts.slice() : 0,   // power-ups: itens no chão + estouros do frame
     players: serializePlayers(state.players, lan.syncLens),
   });
 }
@@ -240,7 +262,10 @@ function lanApplySnapshot(snap) {
   state.scores = snap.sc; state.roundWinner = snap.rw;
   if (snap.ts) state.teamScores = snap.ts;
   state.countdownTimer = snap.ct; state.dyingTimer = snap.dy;
+  state.zoneInset = snap.zi || 0; state.roundTime = snap.rt || 0;   // zona (render no cliente)
+  state.pickups = snap.pk || [];                                    // itens no chão (render)
   applyPlayers(state.players, snap.players);
+  if (snap.bl) for (const b of snap.bl) blastAround(state, b[0], b[1]);   // replica estouros da bomba (buracos + partículas)
   const prevPhase = state.phase;
   state.phase = snap.ph;
   if (snap.ph === "countdown") { el.countdown.classList.remove("hidden"); deps.updateCountdown(); }

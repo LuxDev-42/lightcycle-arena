@@ -26,4 +26,5 @@ export const state = {
   pickupsEnabled: false,    // power-ups ligados nesta partida (só local por ora)
   pickups: [],              // itens no chão: [{ x, y, kind }]
   pickupTimer: 0,           // ms até a próxima aparição
+  blasts: [],               // centros de estouro de bomba NESTE frame (host → cliente replica no LAN)
 };

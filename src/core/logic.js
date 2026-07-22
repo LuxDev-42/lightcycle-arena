@@ -164,6 +164,7 @@ function stepPlayer(state, player) {
     // Só reage a rastro: contra obstáculo do mapa/zona (WALL) ou borda, morre normal.
     if (player.bomb && cell > 0) {
       blastAround(state, tx, ty);          // limpa os rastros ao redor (o alvo vira livre)
+      if (state.blasts) state.blasts.push([tx, ty]);   // registra p/ o LAN replicar no cliente
       player.bomb = false;                 // consome a bomba
     } else {
       player.alive = false;
@@ -255,7 +256,8 @@ function collectPickup(state, player) {
 // Estouro (power-up): quebra RASTROS (grade > 0) num raio ao redor de (cx,cy) — abre espaço.
 // Marca os pontos de rastro no raio como `null` (buraco limpo no desenho). Não toca em
 // obstáculos do mapa nem na zona (WALL = -1), que são desenhados fora da grade.
-function blastAround(state, cx, cy) {
+// Exportada pra o cliente LAN replicar o estouro (o delta de rastro não pega mutação retroativa).
+export function blastAround(state, cx, cy) {
   const R = PICKUP_BLAST_RADIUS, R2 = R * R, grid = state.grid;
   for (let y = Math.max(0, cy - R); y <= Math.min(ROWS - 1, cy + R); y++)
     for (let x = Math.max(0, cx - R); x <= Math.min(COLS - 1, cx + R); x++) {
@@ -294,6 +296,7 @@ export function teleport(state, player) {
 // Avança a simulação por `dt` ms — cada moto no seu próprio ritmo.
 // Retorna true se o round terminou neste avanço.
 export function advance(state, dt) {
+  if (state.blasts) state.blasts.length = 0;   // estouros deste frame (host acumula p/ o LAN)
   updateZone(state, dt);                    // zona fecha antes das motos moverem (colisões deste frame já veem a parede)
   updatePickups(state, dt);
   for (const player of state.players) {

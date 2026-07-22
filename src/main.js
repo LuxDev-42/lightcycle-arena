@@ -199,9 +199,12 @@ function resetRound() {
   applyArena(state.grid, state.arenaLayout);              // marca os obstáculos do layout da partida
   state.particles = [];
   state.roundTime = 0; state.zoneInset = 0;               // zona recomeça a cada round
-  state.zoneEnabled = !!settings.zone && !lan.role;       // por ora só no jogo local (LAN não sincroniza a zona)
-  state.pickups = []; state.pickupTimer = PICKUP_SPAWN_MS;
-  state.pickupsEnabled = !!settings.powerups && !lan.role;   // idem: power-ups só no local por ora
+  // Zona/power-ups: host e local usam as próprias settings; cliente usa o que o host mandou
+  // no match (lan.matchZone/matchPowerups) — o cliente não decide, só reflete/renderiza.
+  const client = lan.role === "client";
+  state.zoneEnabled = client ? !!lan.matchZone : !!settings.zone;
+  state.pickups = []; state.pickupTimer = PICKUP_SPAWN_MS; state.blasts = [];
+  state.pickupsEnabled = client ? !!lan.matchPowerups : !!settings.powerups;
   const total = state.roster.length;
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
