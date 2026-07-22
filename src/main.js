@@ -17,6 +17,7 @@ import { app } from "./core/app.js";
 import { state } from "./core/state.js";
 import { renderer, audio, music } from "./engines.js";
 import { refreshColorUI, applyColors, skinForIndex, aresSkin, cpuSkin, hueColor, hueGlow } from "./ui/colors.js";
+import { recordMatch, getStats, topChampion, resetStats } from "./ui/stats.js";
 import { TEAM_HUES, teamSkin } from "./ui/teams.js";
 import { renderScoreboard, scoreChips, teamScoreChips } from "./ui/scoreboard.js";
 import { setNameplates, updateNameplates, hideNameplates } from "./ui/nameplates.js";
@@ -441,6 +442,31 @@ function closeOptions() {
 }function openAudio()       { showOnly(el.audioMenu); }
 function openAdversaries() { showOnly(el.advMenu); }
 function openMatch()       { showOnly(el.matchMenu); }
+function openStats()       { resetArmed = false; renderStats(); showOnly(el.statsMenu); }
+
+// Preenche as linhas do submenu Estatísticas com o recorde local atual.
+function renderStats() {
+  const s = getStats();
+  const rate = s.played ? Math.round((s.wins / s.played) * 100) : 0;
+  const top = topChampion();
+  const rows = [
+    ["Partidas", s.played],
+    ["Vitórias", `${s.wins} (${rate}%)`],
+    ["Derrotas", s.losses],
+    ["Sequência atual", s.streak],
+    ["Melhor sequência", s.best],
+    ["Mais venceu", top ? `${top[0]} (${top[1]})` : "—"],
+  ];
+  el.statsList.innerHTML = rows.map(([k, v]) =>
+    `<div class="stat-row"><span class="stat-k">${k}</span><span class="stat-v">${v}</span></div>`).join("");
+  el.btnStatsReset.textContent = resetArmed ? "Confirmar?" : "Zerar";
+}
+// Zerar exige 2 cliques (arma → confirma) pra não perder o recorde sem querer.
+let resetArmed = false;
+function statsReset() {
+  if (!resetArmed) { resetArmed = true; el.btnStatsReset.textContent = "Confirmar?"; audio.uiMove(); return; }
+  resetStats(); resetArmed = false; renderStats(); audio.uiBack();
+}
 function openMaps()        { showOnly(el.mapsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openGraphics()    { showOnly(el.graphicsMenu); previewArena(); }   // mostra a arena atrás (preview)
 function openSounds()      { showOnly(el.soundsMenu); }
@@ -486,12 +512,15 @@ function endRound() {
   const winScore = state.winScore || WIN_SCORE;
   if (state.gameMode === "teams") {
     const winTeam = state.teamScores.findIndex((s) => s >= winScore);
-    if (winTeam >= 0) showVictoryTeam(winTeam);
-    else nextRound();
+    if (winTeam >= 0) {
+      recordMatch(winTeam === (state.roster[0] && state.roster[0].team), null);   // recorde do P1 (Times não entra na tábua de programas)
+      showVictoryTeam(winTeam);
+    } else nextRound();
     return;
   }
   const champ = state.players.find(p => state.scores[p.id - 1] >= winScore);
   if (champ) {
+    recordMatch(champ.id === 1, champ.label);   // P1 é o jogador id 1; label do campeão vai pra "mais venceu"
     if (state.ares) aresEnd();
     else showVictory(champ);
   } else {
@@ -558,6 +587,7 @@ function aresEnd() {
 const isOpenSub = () => !el.audioMenu.classList.contains("hidden")
   || !el.advMenu.classList.contains("hidden")
   || !el.matchMenu.classList.contains("hidden")
+  || !el.statsMenu.classList.contains("hidden")
   || !el.mapsMenu.classList.contains("hidden")
   || !el.graphicsMenu.classList.contains("hidden")
   || !el.soundsMenu.classList.contains("hidden")
@@ -604,7 +634,8 @@ function buildNav() {
   registerMenu(el.lanMenu, [navBtn("btn-lan-create"), navBtn("btn-lan-find"), navBtn("btn-lan-back")]);
   registerMenu(el.lanFind, [navBtn("btn-lan-refresh"), navBtn("btn-lan-find-back")]);
   registerMenu(el.lobby, [navSlider(el.lobbyHue, 8), navBtn("btn-lobby-ready"), navBtn("btn-lobby-leave")]);
-  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-match"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
+  registerMenu(el.optionsMenu, [navBtn("btn-adversaries"), navBtn("btn-match"), navBtn("btn-maps"), navBtn("btn-graphics"), navBtn("btn-audio"), navBtn("btn-stats"), navBtn("btn-sounds"), navBtn("btn-controls"), navBtn("btn-options-back")]);
+  registerMenu(el.statsMenu, [navBtn("btn-stats-reset"), navBtn("btn-stats-back")]);
   registerMenu(el.matchMenu, [
     navStepper(el.winVal.closest(".stepper"), () => stepSetting("winScore", -1), () => stepSetting("winScore", 1)),
     navStepper(el.speedVal.closest(".stepper"), () => stepSetting("speed", -1), () => stepSetting("speed", 1)),
@@ -683,6 +714,9 @@ function wireControls() {
   document.getElementById("btn-adv-back").addEventListener("click", backToOptions);
   document.getElementById("btn-match").addEventListener("click", openMatch);
   document.getElementById("btn-match-back").addEventListener("click", backToOptions);
+  document.getElementById("btn-stats").addEventListener("click", openStats);
+  document.getElementById("btn-stats-back").addEventListener("click", backToOptions);
+  document.getElementById("btn-stats-reset").addEventListener("click", statsReset);
   document.getElementById("win-dec").addEventListener("click", () => stepSetting("winScore", -1));
   document.getElementById("win-inc").addEventListener("click", () => stepSetting("winScore", 1));
   document.getElementById("speed-dec").addEventListener("click", () => stepSetting("speed", -1));

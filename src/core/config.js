@@ -32,7 +32,7 @@ export const TRAIL_LINGER_MS = 2000;// trilha de moto morta: whiten suave por is
 export const TRAIL_WINDUP_MS = 1000;// windup do de-rez (som): dura isto e começa a ESTE tempo antes do corte/pop
 export const MAX_ZOOM = 2.1;   // limite de aproximação quando estão pertinho
 
-export const WIN_SCORE = 5;      // melhor de 10: o primeiro a 5 vitórias leva a partida
+export const WIN_SCORE = 3;      // default/fallback de vitórias (configurável em Opções > Partida, 1–10)
 export const COUNTDOWN_MS = 3000;// contagem 3-2-1 antes de cada round começar
 
 // ---- Modo ARES (easter egg) ----
