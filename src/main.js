@@ -10,6 +10,7 @@ import {
   ARENA_NAMES, ARENA_SIZES, ARENA_SIZE_NAMES, buildArenaLayout, setArenaSize,
   CPU_CHARACTERS, CPU_FILLERS,
   SPEED_NAMES, SPEED_SCALES, setSpeedScale,
+  PICKUP_SPAWN_MS,
 } from "./core/config.js";
 import { makePlayer, advance, updateParticles, spawnLayout, applyArena, clearSpawnRunways } from "./core/logic.js";
 import { el } from "./ui/dom.js";
@@ -104,6 +105,10 @@ function defineSettings() {
     el.btnZone.classList.toggle("on", !!v);                        // bolinha p/ a direita quando ligado
     el.btnZone.setAttribute("aria-checked", v ? "true" : "false");
   } });
+  defineSetting("powerups", { ls: "lc.powerups", def: 0, min: 0, max: 1, apply: (v) => {   // power-ups na arena — padrão desligado
+    el.btnPowerups.classList.toggle("on", !!v);
+    el.btnPowerups.setAttribute("aria-checked", v ? "true" : "false");
+  } });
   defineSetting("map", { ls: "lc.map", def: 0, min: 0, max: ARENA_NAMES.length - 1, apply: (v) => {
     el.mapVal.textContent = ARENA_NAMES[v];                // nome do mapa
     el.mapAux.textContent = "";
@@ -195,6 +200,8 @@ function resetRound() {
   state.particles = [];
   state.roundTime = 0; state.zoneInset = 0;               // zona recomeça a cada round
   state.zoneEnabled = !!settings.zone && !lan.role;       // por ora só no jogo local (LAN não sincroniza a zona)
+  state.pickups = []; state.pickupTimer = PICKUP_SPAWN_MS;
+  state.pickupsEnabled = !!settings.powerups && !lan.role;   // idem: power-ups só no local por ora
   const total = state.roster.length;
   const layout = spawnLayout(total);
   state.players = state.roster.map((r, i) => {
@@ -646,6 +653,7 @@ function buildNav() {
     navStepper(el.winVal.closest(".stepper"), () => stepSetting("winScore", -1), () => stepSetting("winScore", 1)),
     navStepper(el.speedVal.closest(".stepper"), () => stepSetting("speed", -1), () => stepSetting("speed", 1)),
     navBtn("btn-zone"),
+    navBtn("btn-powerups"),
     navBtn("btn-match-back"),
   ]);
   registerMenu(el.audioMenu, [navSlider(el.musicVol, 5), navSlider(el.sfxVol, 5), navBtn("btn-audio-back")]);
@@ -729,6 +737,7 @@ function wireControls() {
   document.getElementById("speed-dec").addEventListener("click", () => stepSetting("speed", -1));
   document.getElementById("speed-inc").addEventListener("click", () => stepSetting("speed", 1));
   el.btnZone.addEventListener("click", () => { setSetting("zone", settings.zone ? 0 : 1); audio.uiMove(); });
+  el.btnPowerups.addEventListener("click", () => { setSetting("powerups", settings.powerups ? 0 : 1); audio.uiMove(); });
   document.getElementById("btn-audio").addEventListener("click", openAudio);
   document.getElementById("btn-audio-back").addEventListener("click", backToOptions);
   document.getElementById("btn-again").addEventListener("click", again);

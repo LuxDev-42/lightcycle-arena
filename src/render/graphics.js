@@ -191,6 +191,35 @@ export class Renderer {
     ctx.restore();
   }
 
+  // Power-ups: itens no chão (losango na cor do tipo) + aura na moto com efeito ativo.
+  drawPickups(state) {
+    const ctx = this.ctx;
+    const colorOf = (kind) => (kind === "boost" ? "#ffd23f" : "#ff5c7a");   // boost dourado · estouro rosa
+    ctx.save();
+    for (const pk of (state.pickups || [])) {
+      const cx = (pk.x + 0.5) * CELL, cy = (pk.y + 0.5) * CELL, s = CELL * 1.5, c = colorOf(pk.kind);
+      if (!this.lowFx) { ctx.shadowColor = c; ctx.shadowBlur = 14; }
+      ctx.fillStyle = c;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-s / 2, -s / 2, s, s); ctx.restore();   // quadrado girado = losango
+      ctx.shadowBlur = 0;
+    }
+    if (state.players) for (const p of state.players) {   // indicadores na cabeça: boost (aura) e bomba guardada (anel)
+      if (!p.alive) continue;
+      const cx = (p.x + 0.5) * CELL, cy = (p.y + 0.5) * CELL;
+      ctx.lineWidth = 2 / this.camZoom;
+      if (p.effectKind === "boost") {
+        ctx.strokeStyle = "#ffd23f"; ctx.globalAlpha = 0.75;
+        ctx.beginPath(); ctx.arc(cx, cy, CELL * 1.7, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (p.bomb) {                                       // carrega Bomba: anel rosa (maior)
+        ctx.strokeStyle = "#ff5c7a"; ctx.globalAlpha = 0.85;
+        ctx.beginPath(); ctx.arc(cx, cy, CELL * 2.0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
   // Zona que encolhe: região fechada (letal) preenchida + borda viva + faixa de aviso
   // no anel que fecha a seguir. Só desenha perto de começar a fechar (evita poluir a arena cheia).
   drawZone(state) {
@@ -351,16 +380,19 @@ export class Renderer {
     ctx.lineCap = "round";
 
     ctx.beginPath();
-    ctx.moveTo((trail[0].x + 0.5) * CELL, (trail[0].y + 0.5) * CELL);
     const wallEnd = player.alive ? len - 1 : len;    // vivo: parede até a célula anterior (cabeça é interpolada)
-    for (let i = 1; i < wallEnd; i++) {
-      ctx.lineTo((trail[i].x + 0.5) * CELL, (trail[i].y + 0.5) * CELL);
+    let penDown = false;                             // null no rastro = buraco do Estouro → levanta a caneta
+    for (let i = 0; i < wallEnd; i++) {
+      const c = trail[i];
+      if (!c) { penDown = false; continue; }
+      const px = (c.x + 0.5) * CELL, py = (c.y + 0.5) * CELL;
+      if (penDown) ctx.lineTo(px, py); else { ctx.moveTo(px, py); penDown = true; }
     }
     let headX = (player.x + 0.5) * CELL, headY = (player.y + 0.5) * CELL;
     if (player.alive) {
       headX = (player.prevX + (player.x - player.prevX) * player.progress + 0.5) * CELL;
       headY = (player.prevY + (player.y - player.prevY) * player.progress + 0.5) * CELL;
-      ctx.lineTo(headX, headY);
+      if (penDown) ctx.lineTo(headX, headY); else ctx.moveTo(headX, headY);
     }
 
     // glow externo (sem shadow, barato) — pulado no lowFx; no clarão sempre desenha
@@ -439,6 +471,7 @@ export class Renderer {
     this.drawObstacles(state);
     this.drawZone(state);
     if (state.players) for (const player of state.players) if (player.alive || !player.trailGone) this.drawTrail(player);   // trilha persiste ~2s após a morte, depois some
+    this.drawPickups(state);
     this.drawParticles(state.particles);
     if (this.debug) drawDebug(this, state);
 

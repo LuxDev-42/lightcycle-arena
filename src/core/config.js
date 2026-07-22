@@ -41,6 +41,13 @@ export const ZONE_GRACE_MS = 10000;   // carência antes de começar a fechar
 export const ZONE_STEP_MS = 700;      // tempo por anel (1 célula) fechado
 export const ZONE_MAX_INSET_FRAC = 0.42;   // fecha até esta fração de cada lado (deixa um miolo, não zera)
 
+// Power-ups: itens que aparecem na arena; pegar (passar por cima) dá um efeito temporário.
+export const PICKUP_SPAWN_MS = 6000;  // intervalo entre aparições
+export const PICKUP_MAX = 3;          // máximo no chão ao mesmo tempo
+export const PICKUP_BOOST_MS = 2500;  // duração do boost (velocidade)
+export const PICKUP_BLAST_RADIUS = 8; // raio (células) do estouro que quebra rastros ao redor
+export const BOOST_SPEED = 0.6;       // tick no boost = MIN_TICK × isto (menor = mais rápido que o normal)
+
 // ---- Modo ARES (easter egg) ----
 export const ARES_CHANCE = 0.05; // chance de ARES no singleplayer (multiplayer = /10)
 export const ARES_HOLD_MS = 3000;// tempo do título ARES parado na tela

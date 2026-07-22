@@ -7,6 +7,7 @@ import {
   CELL, COLS, ROWS, DIRS, OPPOSITE, BASE_TICK, MIN_TICK, MAX_TICK, SPEEDUP, TURN_SPEED_KEEP,
   VICTORY_MS, TRAIL_LINGER_MS, ARES_VIOLENCE, ARES_SPEEDUP, ARES_SPEED_MULT, WALL, idx, inBounds, isFree, clamp,
   ZONE_GRACE_MS, ZONE_STEP_MS, ZONE_MAX_INSET_FRAC,
+  PICKUP_SPAWN_MS, PICKUP_MAX, PICKUP_BOOST_MS, PICKUP_BLAST_RADIUS, BOOST_SPEED,
 } from "./config.js";
 import { chooseDirection } from "./ai.js";
 
@@ -57,6 +58,9 @@ export function makePlayer(id, startCol, startRow, dir, isAI, skin, label) {
     progress: 0,        // 0..1: progresso visual entre um passo e o próximo
     fadeTimer: 0,       // (morto) ms restantes do whiten (morte → corte); 0 = viva ou já sumiu
     trailGone: false,   // (morto) trilha já apagada da grade?
+    effectKind: null,   // power-up temporizado ativo: "boost" | null
+    effectMs: 0,        // ms restantes do efeito ativo
+    bomb: false,        // carrega uma Bomba (detona ao encostar num rastro, salvando)
   };
 }
 
@@ -103,6 +107,7 @@ function spawnTrailBurst(particles, player) {
   const trail = player.trail;
   const stride = Math.max(1, Math.floor(trail.length / 14));   // ~14 pontos ao longo do rastro
   for (let i = 0; i < trail.length; i += stride) {
+    if (!trail[i]) continue;                                   // pula buracos do Estouro
     const ox = (trail[i].x + 0.5) * CELL, oy = (trail[i].y + 0.5) * CELL;
     for (let k = 0; k < 3; k++) {
       const angle = Math.random() * Math.PI * 2;
@@ -151,24 +156,38 @@ function stepPlayer(state, player) {
     player.tickMs = Math.min(MAX_TICK, player.tickMs / TURN_SPEED_KEEP);
   }
 
-  const target = { x: player.x + DIRS[player.dir].x, y: player.y + DIRS[player.dir].y };
-  if (!isFree(state.grid, target.x, target.y)) {
-    player.alive = false;
-    spawnExplosion(state.particles, (target.x + 0.5) * CELL, (target.y + 0.5) * CELL, player.color);
-    player.fadeTimer = TRAIL_LINGER_MS;   // a trilha some só após o delay (visual + libera a grade juntos)
-    return;
+  const tx = player.x + DIRS[player.dir].x, ty = player.y + DIRS[player.dir].y;
+  const cell = inBounds(tx, ty) ? state.grid[idx(tx, ty)] : WALL;   // fora da arena = bloqueado
+  if (cell !== 0) {                        // alvo não está livre
+    // Bomba (power-up): detona ao ENCOSTAR num rastro (id > 0) — abre o rastro no raio e sobrevive.
+    // Só reage a rastro: contra obstáculo do mapa/zona (WALL) ou borda, morre normal.
+    if (player.bomb && cell > 0) {
+      blastAround(state, tx, ty);          // limpa os rastros ao redor (o alvo vira livre)
+      player.bomb = false;                 // consome a bomba
+    } else {
+      player.alive = false;
+      spawnExplosion(state.particles, (tx + 0.5) * CELL, (ty + 0.5) * CELL, player.color);
+      player.fadeTimer = TRAIL_LINGER_MS;  // a trilha some só após o delay (visual + libera a grade juntos)
+      return;
+    }
   }
 
   player.prevX = player.x; player.prevY = player.y;
-  player.x = target.x; player.y = target.y;
+  player.x = tx; player.y = ty;
   state.grid[idx(player.x, player.y)] = player.id;
   player.trail.push({ x: player.x, y: player.y });
+  collectPickup(state, player);            // pega power-up se a cabeça caiu num item
 
-  // o programa ARES acelera mais rápido e tem topo de velocidade 10% maior
-  const aresMoto = state.ares && player.isAI;
-  const minTick = aresMoto ? MIN_TICK / ARES_SPEED_MULT : MIN_TICK;
-  const speedup = aresMoto ? ARES_SPEEDUP : SPEEDUP;
-  player.tickMs = Math.max(minTick, player.tickMs * speedup);   // acelera de novo
+  // boost (power-up): fixa a moto na velocidade de boost; senão, aceleração normal
+  if (player.effectKind === "boost") {
+    player.tickMs = MIN_TICK * BOOST_SPEED;
+  } else {
+    // o programa ARES acelera mais rápido e tem topo de velocidade 10% maior
+    const aresMoto = state.ares && player.isAI;
+    const minTick = aresMoto ? MIN_TICK / ARES_SPEED_MULT : MIN_TICK;
+    const speedup = aresMoto ? ARES_SPEEDUP : SPEEDUP;
+    player.tickMs = Math.max(minTick, player.tickMs * speedup);   // acelera de novo
+  }
 }
 
 // Uma célula está na região JÁ FECHADA da zona (nos `inset` anéis externos)?
@@ -198,12 +217,69 @@ function closeRing(state, inset) {
   }
 }
 
+// Power-ups: cronômetro de aparição; solta um item numa célula livre longe das cabeças.
+const PICKUP_KINDS = ["boost", "bomb"];
+function updatePickups(state, dt) {
+  if (!state.pickupsEnabled || state.phase !== "playing") return;
+  state.pickupTimer -= dt;
+  if (state.pickupTimer > 0) return;
+  state.pickupTimer = PICKUP_SPAWN_MS;
+  if (state.pickups.length >= PICKUP_MAX) return;
+  for (let tries = 0; tries < 30; tries++) {
+    const x = 1 + Math.floor(Math.random() * (COLS - 2));
+    const y = 1 + Math.floor(Math.random() * (ROWS - 2));
+    if (state.grid[idx(x, y)] !== 0) continue;                               // só célula livre (fora de parede/rastro/zona)
+    if (state.pickups.some((p) => p.x === x && p.y === y)) continue;
+    let tooClose = false;                                                    // não nascer em cima de alguém
+    for (const pl of state.players) if (pl.alive && Math.abs(pl.x - x) + Math.abs(pl.y - y) < 6) { tooClose = true; break; }
+    if (tooClose) continue;
+    state.pickups.push({ x, y, kind: PICKUP_KINDS[Math.floor(Math.random() * PICKUP_KINDS.length)] });
+    return;
+  }
+}
+// Coleta o item na célula da cabeça (se houver) e aplica o efeito.
+function collectPickup(state, player) {
+  const arr = state.pickups;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].x === player.x && arr[i].y === player.y) {
+      const kind = arr[i].kind;
+      arr.splice(i, 1);
+      if (kind === "boost") { player.effectKind = "boost"; player.effectMs = PICKUP_BOOST_MS; }
+      else player.bomb = true;                        // Bomba: guardada; detona ao encostar num rastro
+      return;
+    }
+  }
+}
+// Estouro (power-up): quebra RASTROS (grade > 0) num raio ao redor de (cx,cy) — abre espaço.
+// Marca os pontos de rastro no raio como `null` (buraco limpo no desenho). Não toca em
+// obstáculos do mapa nem na zona (WALL = -1), que são desenhados fora da grade.
+function blastAround(state, cx, cy) {
+  const R = PICKUP_BLAST_RADIUS, R2 = R * R, grid = state.grid;
+  for (let y = Math.max(0, cy - R); y <= Math.min(ROWS - 1, cy + R); y++)
+    for (let x = Math.max(0, cx - R); x <= Math.min(COLS - 1, cx + R); x++) {
+      const dx = x - cx, dy = y - cy;
+      if (dx * dx + dy * dy <= R2 && grid[idx(x, y)] > 0) grid[idx(x, y)] = 0;   // só rastros (id > 0)
+    }
+  for (const p of state.players) {                 // abre o buraco também no desenho do rastro
+    const t = p.trail;
+    for (let i = 0; i < t.length; i++) {
+      const c = t[i];
+      if (!c) continue;
+      const dx = c.x - cx, dy = c.y - cy;
+      if (dx * dx + dy * dy <= R2) t[i] = null;
+    }
+  }
+  spawnExplosion(state.particles, (cx + 0.5) * CELL, (cy + 0.5) * CELL, "#ff5c7a");
+}
+
 // Avança a simulação por `dt` ms — cada moto no seu próprio ritmo.
 // Retorna true se o round terminou neste avanço.
 export function advance(state, dt) {
   updateZone(state, dt);                    // zona fecha antes das motos moverem (colisões deste frame já veem a parede)
+  updatePickups(state, dt);
   for (const player of state.players) {
     if (!player.alive) continue;
+    if (player.effectMs > 0) { player.effectMs -= dt; if (player.effectMs <= 0) player.effectKind = null; }   // efeito é tempo de relógio
     player.acc += dt;
     while (player.alive && player.acc >= player.tickMs) {
       player.acc -= player.tickMs;
@@ -220,7 +296,7 @@ export function advance(state, dt) {
     player.fadeTimer -= dt;
     if (player.fadeTimer <= 0) {
       spawnTrailBurst(state.particles, player);
-      for (const c of player.trail) if (!inClosedZone(c.x, c.y, state.zoneInset)) state.grid[idx(c.x, c.y)] = 0;   // não reabre a parede da zona
+      for (const c of player.trail) if (c && !inClosedZone(c.x, c.y, state.zoneInset)) state.grid[idx(c.x, c.y)] = 0;   // pula buracos do Estouro; não reabre a zona
       player.trailGone = true;
     }
   }

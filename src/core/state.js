@@ -23,4 +23,7 @@ export const state = {
   zoneEnabled: false,       // zona que encolhe ligada nesta partida (só local por ora)
   roundTime: 0,             // ms decorridos no "playing" deste round (dispara a zona)
   zoneInset: 0,             // nº de anéis já fechados a partir da borda (0 = arena cheia)
+  pickupsEnabled: false,    // power-ups ligados nesta partida (só local por ora)
+  pickups: [],              // itens no chão: [{ x, y, kind }]
+  pickupTimer: 0,           // ms até a próxima aparição
 };
