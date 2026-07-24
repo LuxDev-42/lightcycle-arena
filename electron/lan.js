@@ -81,6 +81,7 @@ class Host extends EventEmitter {
   }
   _onClient(sock) {
     if (this.started || this.players.length >= this.maxPlayers) { sock.destroy(); return; }
+    try { sock.setNoDelay(true); } catch {}   // desliga Nagle: snapshots pequenos/frequentes sem atraso de lote
     lineReader(sock, (m) => this._onMsg(sock, m));
     sock.on("close", () => this._drop(sock));
     sock.on("error", () => this._drop(sock));
@@ -177,6 +178,7 @@ class Client extends EventEmitter {
     super();
     this.youId = null;
     this.sock = net.connect(session.tcpPort, session.host, () => send(this.sock, { t: "join", name: playerName, color }));
+    try { this.sock.setNoDelay(true); } catch {}   // desliga Nagle (input do cliente sem atraso de lote)
     lineReader(this.sock, (m) => {
       if (m.t === "welcome") { this.youId = m.youId; this.emit("welcome", m); }
       else if (m.t === "lobby") this.emit("lobby", m);

@@ -272,7 +272,10 @@ function frame(timestamp) {
     updateParticles(state, dt);
     if (state.nameplateTimer > 0) state.nameplateTimer -= dt;   // some com os balões "quem é quem"
     if (lan.role === "client") {
-      /* partida LAN: o estado vem dos snapshots (lanApplySnapshot) — nada a simular aqui */
+      // LAN cliente: host é autoritativo (posições vêm dos snapshots). Aqui só avançamos a
+      // interpolação da cabeça (progress) entre snapshots — senão a moto trava e "pula" a cada update.
+      if (state.phase === "playing" && state.players)
+        for (const p of state.players) if (p.alive) p.progress = Math.min(1, p.progress + dt / (p.tickMs || 70));
     } else if (state.phase === "aresintro") {
       if (isTerminalActive()) updateAresTerminal(dt);
       if (!isTerminalActive()) {

@@ -12,6 +12,7 @@ export function serializePlayers(players, lens) {
     for (let k = prev; k < p.trail.length; k++) { const c = p.trail[k]; add.push(c ? [c.x, c.y] : null); }   // null = buraco (teleporte/bomba)
     lens[i] = p.trail.length;
     return { x: p.x, y: p.y, px: p.prevX, py: p.prevY, pr: p.progress, dir: p.dir, alive: p.alive, ft: p.fadeTimer, tg: p.trailGone, add,
+      ts: Math.round(p.tickMs),                                        // duração do passo → cliente interpola na taxa certa
       ek: p.effectKind, bm: p.bomb ? 1 : 0, tc: p.teleportCharges };   // power-ups: efeito ativo + bomba + cargas de teleporte
   });
 }
@@ -23,6 +24,7 @@ export function applyPlayers(players, snap) {
     for (const c of s.add) p.trail.push(c ? { x: c[0], y: c[1] } : null);   // preserva os buracos
     p.x = s.x; p.y = s.y; p.prevX = s.px; p.prevY = s.py; p.progress = s.pr;
     p.dir = s.dir; p.alive = s.alive; p.fadeTimer = s.ft; p.trailGone = s.tg;
+    if (s.ts) p.tickMs = s.ts;                                       // duração do passo (interpolação no cliente)
     p.effectKind = s.ek || null; p.bomb = !!s.bm; p.teleportCharges = s.tc || 0;   // efeitos (render das auras/anéis)
   }
 }
