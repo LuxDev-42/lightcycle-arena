@@ -30,7 +30,18 @@
         "AppImage"
       ],
       "category": "Game",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "executableName": "lightcycle-arena",
+      "artifactName": "${productName}.${ext}",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "Lightcycle Arena",
+          "Comment": "Arena de motos de luz estilo Tron",
+          "Categories": "Game;ArcadeGame;",
+          "StartupWMClass": "lightcycle-arena"
+        }
+      }
     },
     "mac": {
       "target": [
@@ -45,6 +56,12 @@
         "portable"
       ],
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "artifactName": "${productName} Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
     }
   },
   "devDependencies": {
